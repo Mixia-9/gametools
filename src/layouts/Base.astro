@@ -1,24 +1,31 @@
 ---
 import '../styles/global.css';
+import LanguageSwitcher from '../components/LanguageSwitcher.astro';
+import { locales, htmlLang, localePath, stripLocale, t, type Locale } from '../i18n/ui';
 
 interface Props {
   title?: string;
   description?: string;
+  locale?: Locale;
 }
 
-const {
-  title = 'GameTools — AI tools for game developers',
-  description = 'A curated, human-filtered directory of AI tools for game development: art, 3D, audio, dialogue, code, QA and marketing.',
-} = Astro.props;
+const SITE = 'https://www.gametools.info';
+
+const { locale = 'en', title = t(locale, 'title.default'), description = t(locale, 'hero.sub') } = Astro.props;
+
+const canonicalPath = stripLocale(Astro.url.pathname);
 ---
 
 <!doctype html>
-<html lang="en">
+<html lang={htmlLang[locale]}>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content={description} />
     <meta name="generator" content={Astro.generator} />
+    <link rel="canonical" href={SITE + localePath(locale, canonicalPath)} />
+    {locales.map((l) => <link rel="alternate" hreflang={htmlLang[l]} href={SITE + localePath(l, canonicalPath)} />)}
+    <link rel="alternate" hreflang="x-default" href={SITE + localePath('en', canonicalPath)} />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎮</text></svg>" />
     <script is:inline>
       (function () {
@@ -31,20 +38,21 @@ const {
   </head>
   <body class="min-h-screen bg-page text-ink antialiased">
     <header class="sticky top-0 z-10 border-b border-edge/80 bg-page/80 backdrop-blur">
-      <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-        <a href="/" class="flex items-center gap-2 font-bold tracking-tight">
+      <div class="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
+        <a href={localePath(locale, '/')} class="flex items-center gap-2 font-bold tracking-tight">
           <span class="text-lg">🎮</span>
           <span>Game<span class="text-violet-600 dark:text-violet-400">Tools</span></span>
         </a>
         <div class="flex items-center gap-4">
-          <nav class="hidden items-center gap-4 text-sm text-ink-muted sm:flex">
-            <a href="/#categories" class="hover:text-ink">Categories</a>
-            <a href="/submit" class="hover:text-ink">Submit a Tool</a>
-            <a href="/about" class="hover:text-ink">About</a>
+          <nav class="hidden items-center gap-4 text-sm text-ink-muted md:flex">
+            <a href={localePath(locale, '/#categories')} class="hover:text-ink">{t(locale, 'nav.categories')}</a>
+            <a href={localePath(locale, '/submit')} class="hover:text-ink">{t(locale, 'nav.submit')}</a>
+            <a href={localePath(locale, '/about')} class="hover:text-ink">{t(locale, 'nav.about')}</a>
           </nav>
+          <LanguageSwitcher locale={locale} path={canonicalPath} />
           <button
             id="theme-toggle"
-            aria-label="Toggle dark / light theme"
+            aria-label={t(locale, 'theme.aria')}
             class="rounded-lg border border-edge p-2 text-ink-muted transition hover:border-violet-500/50 hover:text-ink"
           >
             <svg class="hidden h-4 w-4 dark:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -65,7 +73,7 @@ const {
 
     <footer class="border-t border-edge/80">
       <div class="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-8 text-sm text-ink-faint sm:flex-row sm:items-center sm:justify-between">
-        <p>Curated by a game-industry insider. Listings are free — rankings are never paid for.</p>
+        <p>{t(locale, 'footer.note')}</p>
         <p>© 2026 GameTools · gametools.info</p>
       </div>
     </footer>
@@ -86,7 +94,6 @@ const {
           );
         };
 
-        // 不支持 View Transitions 或用户偏好减少动效时，直接切换
         if (!document.startViewTransition || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
           apply();
           return;

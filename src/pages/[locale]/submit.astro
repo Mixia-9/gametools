@@ -1,0 +1,7 @@
+---
+import SubmitPage from '../../components/pages/SubmitPage.astro';
+import { localeOnlyPaths } from '../../i18n/paths';
+
+export const getStaticPaths = localeOnlyPaths;
+---
+<SubmitPage locale={Astro.props.locale} />

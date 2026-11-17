@@ -17,17 +17,27 @@ npm run preview    # 本地预览构建结果
 ```
 src/
   data/
-    categories.json   # 14 个任务分类（slug/label/zh/emoji/blurb/searchRoot）
+    categories.json   # 15 个任务分类（slug/label/zh/emoji/blurb/searchRoot）
     tools.json        # 工具库（name/url/category/pricing/engines/tested/oneLiner）
-  components/         # ToolCard / CategoryCard
-  layouts/Base.astro  # 页头页脚 + SEO meta
+  i18n/
+    ui.ts             # 四语 UI 文案字典 + localePath/t() 工具函数
+    categories.ts     # 分类的中/繁/日翻译
+    paths.ts          # 静态路径生成（含多语言展开）
+  components/         # ToolCard / CategoryCard / LanguageSwitcher / Comments
+    pages/            # 5 个共享页面组件（接收 locale）
+  layouts/Base.astro  # 页头页脚 + SEO(hreflang/canonical) + 主题 + 语言切换
   pages/
-    index.astro               # 首页：搜索 + 分类 + 全部工具
-    category/[slug].astro     # 分类页（SEO 着陆页）
-    tool/[slug].astro         # 工具详情页（挂 affiliate 的位置）
-    submit.astro              # 提交页（待接 Tally）
-    about.astro
+    index|category|tool|submit|about   # 英文路由（无前缀，默认语言）
+    [locale]/...                        # zh-CN / zh-TW / ja 路由（自动生成）
 ```
+
+### 多语言（i18n）
+
+- 四语：`/`（英文默认）、`/zh-CN/`、`/zh-TW/`、`/ja/`
+- 改 UI 文案 → `src/i18n/ui.ts`；改分类翻译 → `src/i18n/categories.ts`
+- 工具一句话简介目前各语言均为英文（品牌名+行业术语），后续可在 tools.json 加 `oneLiner_zh` 等字段扩展
+- SEO 自动输出 canonical + 5 个 hreflang；页头切换器保留当前页面路径
+- 评论（Giscus）界面语言自动跟随页面语言
 
 ## 如何新增一个工具
 

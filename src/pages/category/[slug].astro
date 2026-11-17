@@ -1,39 +1,9 @@
 ---
-import Base from '../../layouts/Base.astro';
-import ToolCard from '../../components/ToolCard.astro';
-import tools from '../../data/tools.json';
-import categories from '../../data/categories.json';
+import CategoryPage from '../../components/pages/CategoryPage.astro';
+import { categoryPaths } from '../../i18n/paths';
 
-export function getStaticPaths() {
-  return categories.map((cat) => ({ params: { slug: cat.slug }, props: { cat } }));
-}
+export const getStaticPaths = categoryPaths;
 
 const { cat } = Astro.props;
-const list = tools.filter((t) => t.category === cat.slug);
 ---
-
-<Base title={`${cat.label} — AI tools for game devs`} description={`${cat.blurb} A curated list of ${list.length} AI tools for game developers.`}>
-  <nav class="mb-6 text-sm text-ink-faint">
-    <a href="/" class="hover:text-ink">Home</a> <span class="mx-1">/</span> <span class="text-ink-muted">{cat.label}</span>
-  </nav>
-
-  <header class="mb-8">
-    <h1 class="text-3xl font-extrabold tracking-tight">{cat.emoji} AI Tools for {cat.label}</h1>
-    <p class="mt-2 max-w-2xl text-ink-muted">{cat.blurb}</p>
-    <p class="mt-3 text-sm text-ink-faint">
-      {list.length} tools · people also search: <span class="text-ink-muted">“{cat.searchRoot}”</span>
-    </p>
-  </header>
-
-  <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-    {list.map((tool) => <ToolCard tool={tool} />)}
-  </div>
-
-  {list.length === 0 && (
-    <p class="py-10 text-center text-ink-faint">Nothing here yet — <a href="/submit" class="text-violet-600 underline dark:text-violet-400">submit the first tool</a>.</p>
-  )}
-
-  <p class="mt-10 text-sm text-ink-faint">
-    <a href="/#categories" class="text-violet-600 hover:underline dark:text-violet-400">← All categories</a>
-  </p>
-</Base>
+<CategoryPage cat={cat} locale="en" />

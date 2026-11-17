@@ -1,5 +1,8 @@
 ---
 import categories from '../data/categories.json';
+import { t, localePath, type Locale } from '../i18n/ui';
+import { catLabel } from '../i18n/categories';
+import { toolSlug } from '../i18n/paths';
 
 interface Tool {
   name: string;
@@ -14,12 +17,13 @@ interface Tool {
 
 interface Props {
   tool: Tool;
+  locale?: Locale;
 }
 
-const { tool } = Astro.props;
+const { tool, locale = 'en' } = Astro.props;
 const cat = categories.find((c) => c.slug === tool.category);
-
-const slug = tool.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+const label = cat ? catLabel(cat.slug, cat.label, locale) : '';
+const slug = toolSlug(tool.name);
 
 const priceStyles: Record<string, string> = {
   free: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
@@ -35,20 +39,20 @@ const priceStyles: Record<string, string> = {
 >
   <div class="flex items-start justify-between gap-2">
     <h3 class="font-semibold leading-tight">
-      <a href={`/tool/${slug}`} class="after:absolute after:inset-0 group-hover:text-violet-600 dark:group-hover:text-violet-300">{tool.name}</a>
+      <a href={localePath(locale, `/tool/${slug}`)} class="after:absolute after:inset-0 group-hover:text-violet-600 dark:group-hover:text-violet-300">{tool.name}</a>
     </h3>
 
     <div class="flex shrink-0 items-center gap-1.5">
       <span class={`rounded-full border px-2 py-0.5 text-[11px] ${tool.tested ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' : 'border-chip-border bg-chip text-ink-muted'}`}>
-        {tool.tested ? '✅ Tested' : '⏳ Unverified'}
+        {tool.tested ? t(locale, 'card.tested') : t(locale, 'card.unverified')}
       </span>
       {tool.repo && (
         <a
           href={tool.repo}
           target="_blank"
           rel="noopener noreferrer"
-          title="GitHub 仓库"
-          aria-label={`${tool.name} GitHub repository`}
+          title={t(locale, 'card.github')}
+          aria-label={`${tool.name} GitHub`}
           class="relative z-10 rounded-md p-1 text-ink-faint transition hover:text-ink"
         >
           <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor">
@@ -60,8 +64,8 @@ const priceStyles: Record<string, string> = {
         href={tool.url}
         target="_blank"
         rel="noopener noreferrer nofollow"
-        title="官网"
-        aria-label={`${tool.name} official website`}
+        title={t(locale, 'card.website')}
+        aria-label={`${tool.name} website`}
         class="relative z-10 rounded-md p-1 text-ink-faint transition hover:text-violet-600 dark:hover:text-violet-400"
       >
         <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -77,7 +81,7 @@ const priceStyles: Record<string, string> = {
 
   <div class="mt-auto flex flex-wrap items-center gap-2 text-[11px]">
     <span class={`rounded-full border px-2 py-0.5 ${priceStyles[tool.pricing] ?? priceStyles.freemium} capitalize`}>{tool.pricing}</span>
-    {cat && <span class="rounded-full border border-chip-border bg-chip px-2 py-0.5 text-ink-muted">{cat.emoji} {cat.label}</span>}
-    <span class="ml-auto text-ink-faint">{tool.engines.filter((e) => e !== 'any').join(' · ') || 'engine-agnostic'}</span>
+    {cat && <span class="rounded-full border border-chip-border bg-chip px-2 py-0.5 text-ink-muted">{cat.emoji} {label}</span>}
+    <span class="ml-auto text-ink-faint">{tool.engines.filter((e) => e !== 'any').join(' · ') || t(locale, 'card.any')}</span>
   </div>
 </div>

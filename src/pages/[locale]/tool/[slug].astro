@@ -1,0 +1,9 @@
+---
+import ToolPage from '../../../components/pages/ToolPage.astro';
+import { toolPaths, localized } from '../../../i18n/paths';
+
+export function getStaticPaths() {
+  return localized(toolPaths);
+}
+---
+<ToolPage tool={Astro.props.tool} locale={Astro.props.locale} />

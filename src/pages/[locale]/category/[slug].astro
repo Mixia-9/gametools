@@ -1,0 +1,9 @@
+---
+import CategoryPage from '../../../components/pages/CategoryPage.astro';
+import { categoryPaths, localized } from '../../../i18n/paths';
+
+export function getStaticPaths() {
+  return localized(categoryPaths);
+}
+---
+<CategoryPage cat={Astro.props.cat} locale={Astro.props.locale} />
