@@ -10,19 +10,75 @@ interface Props {
 const { locale, path } = Astro.props;
 ---
 
-<nav aria-label={t(locale, 'lang.aria')} class="flex items-center gap-2 text-xs">
-  {
-    locales.map((l, i) => (
-      <>
-        {i > 0 && <span class="text-ink-faint">·</span>}
+<div id="lang-switcher" class="relative">
+  <button
+    id="lang-btn"
+    type="button"
+    aria-haspopup="menu"
+    aria-expanded="false"
+    aria-label={t(locale, 'lang.aria')}
+    class="flex items-center gap-1.5 rounded-lg border border-edge px-2 py-1.5 text-xs text-ink-muted transition hover:border-violet-500/50 hover:text-ink"
+  >
+    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="9"></circle>
+      <path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"></path>
+    </svg>
+    <span>{localeNames[locale]}</span>
+    <svg id="lang-chevron" class="h-3 w-3 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m6 9 6 6 6-6"></path>
+    </svg>
+  </button>
+
+  <div
+    id="lang-menu"
+    role="menu"
+    class="absolute right-0 top-full z-20 mt-2 hidden min-w-36 origin-top-right rounded-xl border border-edge bg-card p-1 shadow-lg"
+  >
+    {
+      locales.map((l) => (
         <a
           href={localePath(l, path)}
+          role="menuitem"
           aria-current={l === locale ? 'page' : undefined}
-          class={l === locale ? 'font-semibold text-ink' : 'text-ink-faint transition hover:text-ink'}
+          class:list={[
+            'flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm transition',
+            l === locale ? 'font-semibold text-ink' : 'text-ink-muted hover:bg-card-hover hover:text-ink',
+          ]}
         >
-          {localeNames[l]}
+          <span>{localeNames[l]}</span>
+          {l === locale && (
+            <svg class="h-4 w-4 text-violet-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 6 9 17l-5-5" />
+            </svg>
+          )}
         </a>
-      </>
-    ))
-  }
-</nav>
+      ))
+    }
+  </div>
+</div>
+
+<script>
+  const wrap = document.getElementById('lang-switcher');
+  const btn = document.getElementById('lang-btn');
+  const menu = document.getElementById('lang-menu');
+  const chevron = document.getElementById('lang-chevron');
+
+  const setOpen = (open: boolean) => {
+    menu?.classList.toggle('hidden', !open);
+    btn?.setAttribute('aria-expanded', String(open));
+    chevron?.classList.toggle('rotate-180', open);
+  };
+
+  btn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setOpen(btn.getAttribute('aria-expanded') !== 'true');
+  });
+
+  document.addEventListener('click', (e) => {
+    if (wrap && !wrap.contains(e.target as Node)) setOpen(false);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') setOpen(false);
+  });
+</script>
