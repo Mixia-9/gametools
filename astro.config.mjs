@@ -3,7 +3,7 @@ import tailwindcss from '@tailwindcss/vite';
 import sitemap from '@astrojs/sitemap';
 
 export default defineConfig({
-  site: 'https://gametools.info',
+  site: 'https://www.gametools.info',
   integrations: [sitemap()],
   vite: {
     plugins: [tailwindcss()],
