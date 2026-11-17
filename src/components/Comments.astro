@@ -1,0 +1,48 @@
+---
+// Giscus 评论配置 —— 部署时填写（README 有完整步骤）：
+// 1) GitHub 建公开仓库 → 2) 仓库 Settings 开启 Discussions
+// 3) 安装 giscus app → 4) 到 https://giscus.app 生成下面四个值
+const GISCUS = {
+  repo: '', // 例如 'yourname/ai-game-tools'
+  repoId: '',
+  category: 'Announcements',
+  categoryId: '',
+};
+
+const ready = Boolean(GISCUS.repo && GISCUS.repoId && GISCUS.categoryId);
+---
+
+<section id="comments" class="mt-12">
+  <h2 class="mb-4 text-lg font-bold">Comments</h2>
+
+  {
+    ready ? (
+      <div class="giscus" />
+    ) : (
+      <div class="rounded-xl border border-dashed border-edge p-6 text-sm text-ink-faint">
+        Comments open at launch — powered by GitHub Discussions (no tracking, no ads).
+      </div>
+    )
+  }
+
+  {ready && (
+    <script
+      is:inline
+      src="https://giscus.app/client.js"
+      data-repo={GISCUS.repo}
+      data-repo-id={GISCUS.repoId}
+      data-category={GISCUS.category}
+      data-category-id={GISCUS.categoryId}
+      data-mapping="pathname"
+      data-strict="0"
+      data-reactions-enabled="1"
+      data-emit-metadata="0"
+      data-input-position="top"
+      data-theme="preferred_color_scheme"
+      data-lang="en"
+      data-loading="lazy"
+      crossorigin="anonymous"
+      async
+    />
+  )}
+</section>

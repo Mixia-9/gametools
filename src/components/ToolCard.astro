@@ -1,0 +1,83 @@
+---
+import categories from '../data/categories.json';
+
+interface Tool {
+  name: string;
+  url: string;
+  repo?: string;
+  category: string;
+  pricing: string;
+  engines: string[];
+  tested: boolean;
+  oneLiner: string;
+}
+
+interface Props {
+  tool: Tool;
+}
+
+const { tool } = Astro.props;
+const cat = categories.find((c) => c.slug === tool.category);
+
+const slug = tool.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+const priceStyles: Record<string, string> = {
+  free: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
+  freemium: 'border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-400',
+  paid: 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400',
+};
+---
+
+<div
+  data-tool
+  data-search={`${tool.name} ${tool.category} ${cat?.label ?? ''} ${tool.oneLiner}`.toLowerCase()}
+  class="group relative flex flex-col gap-3 rounded-xl border border-edge bg-card p-4 transition hover:border-violet-500/50 hover:bg-card-hover"
+>
+  <div class="flex items-start justify-between gap-2">
+    <h3 class="font-semibold leading-tight">
+      <a href={`/tool/${slug}`} class="after:absolute after:inset-0 group-hover:text-violet-600 dark:group-hover:text-violet-300">{tool.name}</a>
+    </h3>
+
+    <div class="flex shrink-0 items-center gap-1.5">
+      <span class={`rounded-full border px-2 py-0.5 text-[11px] ${tool.tested ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' : 'border-chip-border bg-chip text-ink-muted'}`}>
+        {tool.tested ? '✅ Tested' : '⏳ Unverified'}
+      </span>
+      {tool.repo && (
+        <a
+          href={tool.repo}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="GitHub 仓库"
+          aria-label={`${tool.name} GitHub repository`}
+          class="relative z-10 rounded-md p-1 text-ink-faint transition hover:text-ink"
+        >
+          <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+          </svg>
+        </a>
+      )}
+      <a
+        href={tool.url}
+        target="_blank"
+        rel="noopener noreferrer nofollow"
+        title="官网"
+        aria-label={`${tool.name} official website`}
+        class="relative z-10 rounded-md p-1 text-ink-faint transition hover:text-violet-600 dark:hover:text-violet-400"
+      >
+        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+          <path d="M15 3h6v6" />
+          <path d="M10 14 21 3" />
+        </svg>
+      </a>
+    </div>
+  </div>
+
+  <p class="line-clamp-2 text-sm text-ink-muted">{tool.oneLiner}</p>
+
+  <div class="mt-auto flex flex-wrap items-center gap-2 text-[11px]">
+    <span class={`rounded-full border px-2 py-0.5 ${priceStyles[tool.pricing] ?? priceStyles.freemium} capitalize`}>{tool.pricing}</span>
+    {cat && <span class="rounded-full border border-chip-border bg-chip px-2 py-0.5 text-ink-muted">{cat.emoji} {cat.label}</span>}
+    <span class="ml-auto text-ink-faint">{tool.engines.filter((e) => e !== 'any').join(' · ') || 'engine-agnostic'}</span>
+  </div>
+</div>

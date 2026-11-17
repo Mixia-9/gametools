@@ -1,0 +1,17 @@
+[
+  { "slug": "game-ideation", "label": "Game Ideation", "zh": "概念/立项", "emoji": "💡", "blurb": "Brainstorm concepts, mechanics and playable prototypes with AI.", "searchRoot": "ai game idea generator" },
+  { "slug": "concept-art", "label": "Concept Art", "zh": "原画/概念图", "emoji": "🎨", "blurb": "Moodboards and concept art for your game's visual direction.", "searchRoot": "ai concept art for games" },
+  { "slug": "character-art", "label": "Character & Illustration", "zh": "立绘/角色", "emoji": "🧑‍🎨", "blurb": "Character design, sprites and illustration pipelines.", "searchRoot": "ai character design generator" },
+  { "slug": "3d-models", "label": "3D Models", "zh": "3D 建模", "emoji": "🧊", "blurb": "Text/image-to-3D mesh generation and cleanup for game pipelines.", "searchRoot": "ai 3d model generator" },
+  { "slug": "textures", "label": "Textures & Materials", "zh": "贴图/材质", "emoji": "🧱", "blurb": "PBR textures, materials and tileable patterns from prompts or photos.", "searchRoot": "ai texture generator" },
+  { "slug": "animation", "label": "Animation & MoCap", "zh": "动画", "emoji": "🏃", "blurb": "Auto-animation, markerless motion capture and physics-assisted keyframing.", "searchRoot": "ai animation tools" },
+  { "slug": "environments", "label": "Environments & Skyboxes", "zh": "环境/天空盒", "emoji": "🌄", "blurb": "360° skyboxes, panoramas and world-building visuals.", "searchRoot": "ai skybox generator" },
+  { "slug": "music", "label": "Music", "zh": "音乐", "emoji": "🎵", "blurb": "Original soundtracks, adaptive scores and licensed-safe music.", "searchRoot": "ai music for games" },
+  { "slug": "sfx", "label": "Sound Effects", "zh": "音效", "emoji": "🔊", "blurb": "Game SFX and foley generated from text prompts.", "searchRoot": "ai sound effects generator" },
+  { "slug": "voice", "label": "Voice Acting", "zh": "语音", "emoji": "🎙️", "blurb": "AI voice actors, dubbing and localized VO for cutscenes and barks.", "searchRoot": "ai voice acting" },
+  { "slug": "npc-dialogue", "label": "NPC & Dialogue", "zh": "NPC/对话", "emoji": "💬", "blurb": "Runtime LLM-powered NPCs and dialogue systems with engine SDKs.", "searchRoot": "ai npc dialogue" },
+  { "slug": "narrative", "label": "Narrative & Writing", "zh": "叙事/剧情", "emoji": "📖", "blurb": "Quest writing, branching narrative and lore bibles.", "searchRoot": "ai game writing tools" },
+  { "slug": "localization", "label": "Localization & LQA", "zh": "本地化/LQA", "emoji": "🌐", "blurb": "AI-assisted translation, dubbing pipelines and linguistic QA for global launch.", "searchRoot": "ai game localization tools" },
+  { "slug": "code-testing", "label": "Code & QA", "zh": "代码/QA", "emoji": "🛠️", "blurb": "Coding assistants, engine AI copilots and automated game testing.", "searchRoot": "ai for game development" },
+  { "slug": "marketing", "label": "Marketing Assets", "zh": "营销素材", "emoji": "📣", "blurb": "Trailers, Steam capsules, screenshots and social creatives.", "searchRoot": "ai game trailer generator" }
+]

@@ -1,0 +1,20 @@
+---
+interface Props {
+  cat: { slug: string; label: string; emoji: string; blurb: string };
+  count: number;
+}
+
+const { cat, count } = Astro.props;
+---
+
+<a
+  href={`/category/${cat.slug}`}
+  class="flex flex-col gap-2 rounded-xl border border-edge bg-card p-5 transition hover:border-violet-500/50 hover:bg-card-hover"
+>
+  <div class="flex items-center justify-between">
+    <span class="text-2xl">{cat.emoji}</span>
+    <span class="rounded-full border border-chip-border bg-chip px-2 py-0.5 text-[11px] text-ink-muted">{count} tools</span>
+  </div>
+  <h3 class="font-semibold">{cat.label}</h3>
+  <p class="line-clamp-2 text-sm text-ink-muted">{cat.blurb}</p>
+</a>

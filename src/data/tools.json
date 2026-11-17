@@ -1,0 +1,82 @@
+[
+  { "name": "Ludo.ai", "url": "https://ludo.ai", "category": "game-ideation", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Game concept research: market trends, ideation and competitor digging." },
+  { "name": "Rosebud AI", "url": "https://rosebud.ai", "category": "game-ideation", "pricing": "freemium", "engines": ["web"], "tested": false, "oneLiner": "Prompt-to-browser-game prototyping plus AI asset creation." },
+  { "name": "Dungeon Alchemist", "url": "https://www.dungeonalchemist.com", "category": "game-ideation", "pricing": "paid", "engines": ["any"], "tested": false, "oneLiner": "AI-assisted 3D map and level generation; exports to VTT and engines." },
+
+  { "name": "Midjourney", "url": "https://midjourney.com", "category": "concept-art", "pricing": "paid", "engines": ["any"], "tested": false, "oneLiner": "Industry-standard image model for concept art and moodboards." },
+  { "name": "Leonardo.Ai", "url": "https://leonardo.ai", "category": "concept-art", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Game-focused image generation with fine-tuned styles and asset consistency." },
+  { "name": "Scenario", "url": "https://scenario.com", "category": "concept-art", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Train custom models on your own art style for on-brand assets." },
+  { "name": "Layer", "url": "https://layer.ai", "category": "concept-art", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Turn concept art into production-ready, layered game assets." },
+  { "name": "KREA", "url": "https://krea.ai", "category": "concept-art", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Real-time image generation and enhancement for rapid iteration." },
+  { "name": "Stable Diffusion", "url": "https://stability.ai", "category": "concept-art", "pricing": "free", "engines": ["any"], "tested": false, "oneLiner": "Open-weights image models — run locally for unlimited private iteration." },
+  { "name": "Ideogram", "url": "https://ideogram.ai", "category": "concept-art", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Image generation that nails text-in-image — logos, posters, key art." },
+  { "name": "Recraft", "url": "https://www.recraft.ai", "category": "concept-art", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Vector/SVG generation for game UI, icons and scalable illustrations." },
+  { "name": "Civitai", "url": "https://civitai.com", "category": "concept-art", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Community hub for fine-tuned image models and LoRAs — find your style." },
+
+  { "name": "NovelAI", "url": "https://novelai.net", "category": "character-art", "pricing": "paid", "engines": ["any"], "tested": false, "oneLiner": "Strong anime/illustration engine for character art and sprites." },
+  { "name": "PixAI", "url": "https://pixai.art", "category": "character-art", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Anime-style character generation community with remixable models." },
+  { "name": "SeaArt", "url": "https://www.seaart.ai", "category": "character-art", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Browser-based image platform with heavy anime/character model library." },
+
+  { "name": "Meshy", "url": "https://www.meshy.ai", "category": "3d-models", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Text/image-to-3D mesh with PBR textures; exports glTF/FBX/OBJ." },
+  { "name": "Tripo", "url": "https://www.tripo3d.ai", "category": "3d-models", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Fast image-to-3D generation with clean topology options." },
+  { "name": "Kaedim", "url": "https://www.kaedim3d.com", "category": "3d-models", "pricing": "paid", "engines": ["any"], "tested": false, "oneLiner": "Concept art to game-ready 3D models with human-in-the-loop QA." },
+  { "name": "Luma Genie", "url": "https://lumalabs.ai/genie", "category": "3d-models", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Text/image-to-3D meshes from the Luma research team." },
+  { "name": "Rodin", "url": "https://hyper3d.co", "category": "3d-models", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "High-detail 3D generation with PBR, built for production pipelines." },
+  { "name": "Sloyd", "url": "https://sloyd.ai", "category": "3d-models", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Parametric, game-ready props generated and edited in the browser." },
+  { "name": "CSM", "url": "https://csm.ai", "category": "3d-models", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Image/video-to-3D from Common Sense Machines; API for pipelines." },
+
+  { "name": "Poly", "url": "https://withpoly.com", "category": "textures", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "AI PBR texture generator with tileable outputs and a browsable library." },
+  { "name": "ArmorLab", "url": "https://armorlab.org", "repo": "https://github.com/armorteam/ArmorLab", "category": "textures", "pricing": "free", "engines": ["any"], "tested": false, "oneLiner": "Free texture synthesis and PBR map extraction from photos." },
+  { "name": "Dream Textures", "url": "https://github.com/carson-katri/dream-textures", "repo": "https://github.com/carson-katri/dream-textures", "category": "textures", "pricing": "free", "engines": ["any"], "tested": false, "oneLiner": "Open-source Blender addon: generate textures in-place with Stable Diffusion." },
+
+  { "name": "Cascadeur", "url": "https://cascadeur.com", "category": "animation", "pricing": "freemium", "engines": ["unity", "unreal", "any"], "tested": false, "oneLiner": "Physics-based character animation with AI-assisted auto-posing." },
+  { "name": "Wonder Studio", "url": "https://wonderdynamics.com", "category": "animation", "pricing": "paid", "engines": ["any"], "tested": false, "oneLiner": "Auto-cast CG characters into live-action footage; great for trailers." },
+  { "name": "Move.ai", "url": "https://www.move.ai", "category": "animation", "pricing": "paid", "engines": ["any"], "tested": false, "oneLiner": "Markerless motion capture from ordinary cameras or phones." },
+  { "name": "DeepMotion", "url": "https://www.deepmotion.com", "category": "animation", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Video-to-3D animation with body, hand and face tracking." },
+  { "name": "Kinetix", "url": "https://www.kinetix.tech", "category": "animation", "pricing": "freemium", "engines": ["unity", "unreal", "web"], "tested": false, "oneLiner": "UGC emotes and video-to-animation SDK for games." },
+  { "name": "Mixamo", "url": "https://www.mixamo.com", "category": "animation", "pricing": "free", "engines": ["any"], "tested": false, "oneLiner": "Adobe's free auto-rigging + motion library — still the fastest path to character anims." },
+  { "name": "Rokoko Video", "url": "https://www.rokoko.com", "category": "animation", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Free AI motion capture from webcam video, with cleanup in Rokoko Studio." },
+
+  { "name": "Blockade Labs", "url": "https://skybox.blockadelabs.com", "category": "environments", "pricing": "freemium", "engines": ["unity", "unreal", "any"], "tested": false, "oneLiner": "Text-to-360° skybox generator with engine-ready exports." },
+
+  { "name": "Suno", "url": "https://suno.com", "category": "music", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Full songs with vocals from a prompt; strong for trailers and menus." },
+  { "name": "Udio", "url": "https://www.udio.com", "category": "music", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "High-quality music generation with fine instrumentation control." },
+  { "name": "AIVA", "url": "https://www.aiva.ai", "category": "music", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Compose orchestral and adaptive scores; edit in a MIDI-like workflow." },
+  { "name": "Soundraw", "url": "https://soundraw.io", "category": "music", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Royalty-free music generation with granular customization." },
+  { "name": "Beatoven.ai", "url": "https://www.beatoven.ai", "category": "music", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Mood-based royalty-free tracks for gameplay and trailers." },
+  { "name": "Mubert", "url": "https://mubert.com", "category": "music", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Generative royalty-free music with an API for adaptive in-game audio." },
+
+  { "name": "Stable Audio", "url": "https://stableaudio.com", "category": "sfx", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Text-to-audio generation including one-shot SFX." },
+  { "name": "ElevenLabs Sound Effects", "url": "https://elevenlabs.io/sound-effects", "category": "sfx", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Text-to-SFX from the ElevenLabs audio stack; short foley clips." },
+  { "name": "Meta AudioCraft", "url": "https://audiocraft.metademolab.com", "repo": "https://github.com/facebookresearch/audiocraft", "category": "sfx", "pricing": "free", "engines": ["any"], "tested": false, "oneLiner": "Meta's open-source music/SFX generation research codebase." },
+
+  { "name": "ElevenLabs", "url": "https://elevenlabs.io", "category": "voice", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Best-in-class TTS, dubbing and voice cloning for VO." },
+  { "name": "Replica Studios", "url": "https://replicastudios.com", "category": "voice", "pricing": "freemium", "engines": ["unity", "unreal"], "tested": false, "oneLiner": "Game VO with performance controls and per-project licensing." },
+  { "name": "Resemble AI", "url": "https://www.resemble.ai", "category": "voice", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Voice cloning and real-time TTS APIs for runtime dialogue." },
+  { "name": "Fish Audio", "url": "https://fish.audio", "repo": "https://github.com/fishaudio/fish-speech", "category": "voice", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Open voice-model ecosystem with multilingual TTS." },
+  { "name": "Play.ht", "url": "https://play.ht", "category": "voice", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Large voice library with real-time TTS API for game dialogue." },
+
+  { "name": "Inworld", "url": "https://inworld.ai", "category": "npc-dialogue", "pricing": "freemium", "engines": ["unity", "unreal"], "tested": false, "oneLiner": "Runtime AI NPCs with memory and goals; official engine SDKs." },
+  { "name": "Convai", "url": "https://convai.com", "category": "npc-dialogue", "pricing": "freemium", "engines": ["unity", "unreal", "godot"], "tested": false, "oneLiner": "Conversational NPCs with avatar and engine integrations." },
+  { "name": "Charisma", "url": "https://charisma.ai", "category": "npc-dialogue", "pricing": "freemium", "engines": ["unity", "unreal"], "tested": false, "oneLiner": "Story engine combining branching dialogue with LLM characters." },
+
+  { "name": "Sudowrite", "url": "https://sudowrite.com", "category": "narrative", "pricing": "paid", "engines": ["any"], "tested": false, "oneLiner": "Long-form fiction co-writer; handy for quest and lore drafts." },
+  { "name": "Novelcrafter", "url": "https://www.novelcrafter.com", "category": "narrative", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Codex-driven writing app; bring your own AI models." },
+
+  { "name": "Crowdin", "url": "https://crowdin.com", "category": "localization", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Localization platform with AI (MT + LLM) translation for games at scale." },
+  { "name": "Lokalise AI", "url": "https://lokalise.com", "category": "localization", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Game-focused localization with AI translation, QA and context screenshots." },
+  { "name": "DeepL", "url": "https://www.deepl.com", "category": "localization", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "High-quality neural MT with API; a common first-pass for game loc." },
+
+  { "name": "Cursor", "url": "https://cursor.com", "category": "code-testing", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "AI-first code editor; strong for gameplay and tooling work." },
+  { "name": "GitHub Copilot", "url": "https://github.com/features/copilot", "category": "code-testing", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "In-IDE completions and chat with solid C#/C++ support." },
+  { "name": "Windsurf", "url": "https://windsurf.com", "category": "code-testing", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Agentic code editor geared to multi-file refactors." },
+  { "name": "Unity AI (Muse)", "url": "https://unity.com/ai", "category": "code-testing", "pricing": "paid", "engines": ["unity"], "tested": false, "oneLiner": "Unity's built-in AI assistant and generative tooling." },
+  { "name": "modl.ai", "url": "https://modl.ai", "category": "code-testing", "pricing": "paid", "engines": ["any"], "tested": false, "oneLiner": "AI-powered automated game QA and playtesting bots." },
+
+  { "name": "Runway", "url": "https://runwayml.com", "category": "marketing", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Generative video for trailers and promo clips." },
+  { "name": "Pika", "url": "https://pika.art", "category": "marketing", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Text/image-to-video with effects tuned for social creatives." },
+  { "name": "Kling", "url": "https://klingai.com", "category": "marketing", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "High-quality video generation for cinematic trailer shots." },
+  { "name": "Canva", "url": "https://www.canva.com", "category": "marketing", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Quick Steam capsules, thumbnails and social assets." },
+  { "name": "Opus Clip", "url": "https://www.opus.pro", "category": "marketing", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Auto-cut devlogs and streams into viral short clips." },
+  { "name": "Bannerbear", "url": "https://www.bannerbear.com", "category": "marketing", "pricing": "paid", "engines": ["any"], "tested": false, "oneLiner": "Image/video generation API — auto-produce store creatives per platform." }
+]

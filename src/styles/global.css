@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --color-page: var(--page);
+  --color-card: var(--card);
+  --color-card-hover: var(--card-hover);
+  --color-edge: var(--edge);
+  --color-chip: var(--chip);
+  --color-chip-border: var(--chip-border);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-faint: var(--ink-faint);
+}
+
+:root {
+  --page: #fafafa;
+  --card: #ffffff;
+  --card-hover: #f4f4f5;
+  --edge: #e4e4e7;
+  --chip: #f4f4f5;
+  --chip-border: #d4d4d8;
+  --ink: #18181b;
+  --ink-muted: #52525b;
+  --ink-faint: #71717a;
+}
+
+.dark {
+  --page: #09090b;
+  --card: #18181b;
+  --card-hover: #1f1f23;
+  --edge: #27272a;
+  --chip: #1c1c1f;
+  --chip-border: #3f3f46;
+  --ink: #f4f4f4;
+  --ink-muted: #a1a1aa;
+  --ink-faint: #71717a;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* 主题切换：圆形扩散过渡（View Transitions API） */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+body {
+  background-color: var(--page);
+}
