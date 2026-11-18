@@ -87,11 +87,16 @@ const canonicalPath = stripLocale(Astro.url.pathname);
 
         const apply = () => {
           root.classList.toggle('dark', dark);
-          // 同步 Giscus 评论框主题（如果已加载）
-          document.querySelector('iframe.giscus-frame')?.contentWindow?.postMessage(
-            { giscus: { setConfig: { theme: dark ? 'dark' : 'light' } } },
-            '*'
-          );
+          // 同步 Giscus 评论框主题：已加载则发消息，未加载则改属性待其初始化时生效
+          const frame = document.querySelector('iframe.giscus-frame');
+          if (frame) {
+            frame.contentWindow?.postMessage(
+              { giscus: { setConfig: { theme: dark ? 'dark' : 'light' } } },
+              '*'
+            );
+          } else {
+            document.getElementById('giscus-script')?.setAttribute('data-theme', dark ? 'dark' : 'light');
+          }
         };
 
         if (!document.startViewTransition || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
