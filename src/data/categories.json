@@ -3,6 +3,7 @@
   { "slug": "concept-art", "label": "Concept Art", "zh": "原画/概念图", "emoji": "🎨", "blurb": "Moodboards and concept art for your game's visual direction.", "searchRoot": "ai concept art for games" },
   { "slug": "character-art", "label": "Character & Illustration", "zh": "立绘/角色", "emoji": "🧑‍🎨", "blurb": "Character design, sprites and illustration pipelines.", "searchRoot": "ai character design generator" },
   { "slug": "3d-models", "label": "3D Models", "zh": "3D 建模", "emoji": "🧊", "blurb": "Text/image-to-3D mesh generation and cleanup for game pipelines.", "searchRoot": "ai 3d model generator" },
+  { "slug": "retopo-uv", "label": "Retopology & UV", "zh": "重拓扑/UV", "emoji": "🧵", "blurb": "Automatic retopology and UV unwrapping — turning dense sculpts into game-ready meshes.", "searchRoot": "automatic retopology uv unwrap tool" },
   { "slug": "textures", "label": "Textures & Materials", "zh": "贴图/材质", "emoji": "🧱", "blurb": "PBR textures, materials and tileable patterns from prompts or photos.", "searchRoot": "ai texture generator" },
   { "slug": "animation", "label": "Animation & MoCap", "zh": "动画", "emoji": "🏃", "blurb": "Auto-animation, markerless motion capture and physics-assisted keyframing.", "searchRoot": "ai animation tools" },
   { "slug": "environments", "label": "Environments & Skyboxes", "zh": "环境/天空盒", "emoji": "🌄", "blurb": "360° skyboxes, panoramas and world-building visuals.", "searchRoot": "ai skybox generator" },

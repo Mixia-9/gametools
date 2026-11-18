@@ -25,6 +25,12 @@
   { "name": "Sloyd", "url": "https://sloyd.ai", "category": "3d-models", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Parametric, game-ready props generated and edited in the browser." },
   { "name": "CSM", "url": "https://csm.ai", "category": "3d-models", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "Image/video-to-3D from Common Sense Machines; API for pipelines." },
 
+  { "name": "RizomUV", "url": "https://rizom-lab.com", "category": "retopo-uv", "pricing": "paid", "engines": ["any"], "tested": false, "oneLiner": "Industry-standard standalone UV unwrapping; the fastest packs in the business." },
+  { "name": "Quad Remesher", "url": "https://exoside.com", "category": "retopo-uv", "pricing": "paid", "engines": ["any"], "tested": false, "oneLiner": "One-click quad remesher plugin for Blender, Maya, 3ds Max, C4D and Houdini." },
+  { "name": "Instant Meshes", "url": "https://github.com/wjakob/instant-meshes", "repo": "https://github.com/wjakob/instant-meshes", "category": "retopo-uv", "pricing": "free", "engines": ["any"], "tested": false, "oneLiner": "Free, open-source field-aligned remesher — instant quads from dense sculpts." },
+  { "name": "TopoGun 3", "url": "https://topogun3.com", "category": "retopo-uv", "pricing": "paid", "engines": ["any"], "tested": false, "oneLiner": "Standalone retopology workhorse for high-poly to game-mesh workflows." },
+  { "name": "Ultimate Unwrap 3D", "url": "https://www.unwrap3d.com", "category": "retopo-uv", "pricing": "paid", "engines": ["any"], "tested": false, "oneLiner": "Veteran standalone UV editor with deep game-engine format support." },
+
   { "name": "Poly", "url": "https://withpoly.com", "category": "textures", "pricing": "freemium", "engines": ["any"], "tested": false, "oneLiner": "AI PBR texture generator with tileable outputs and a browsable library." },
   { "name": "ArmorLab", "url": "https://armorlab.org", "repo": "https://github.com/armorteam/ArmorLab", "category": "textures", "pricing": "free", "engines": ["any"], "tested": false, "oneLiner": "Free texture synthesis and PBR map extraction from photos." },
   { "name": "Dream Textures", "url": "https://github.com/carson-katri/dream-textures", "repo": "https://github.com/carson-katri/dream-textures", "category": "textures", "pricing": "free", "engines": ["any"], "tested": false, "oneLiner": "Open-source Blender addon: generate textures in-place with Stable Diffusion." },
