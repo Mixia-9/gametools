@@ -11,10 +11,10 @@ const { locale = 'en' } = Astro.props;
 // 1) GitHub 建公开仓库 → 2) 仓库 Settings 开启 Discussions
 // 3) 安装 giscus app → 4) 到 https://giscus.app 生成下面四个值
 const GISCUS = {
-  repo: '', // 例如 'Mixia-9/gametools'
-  repoId: '',
+  repo: 'Mixia-9/gametools',
+  repoId: 'R_kgDOVx-nKg',
   category: 'Announcements',
-  categoryId: '',
+  categoryId: 'DIC_kwDOVx-nKs4DLazk',
 };
 
 const ready = Boolean(GISCUS.repo && GISCUS.repoId && GISCUS.categoryId);
