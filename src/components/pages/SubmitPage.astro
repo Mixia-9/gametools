@@ -23,11 +23,17 @@ const { locale = 'en' } = Astro.props;
       </ul>
     </div>
 
-    <!-- TODO: 替换为你的 Tally 表单（tally.so 免费建表，把 embed 代码贴到这里） -->
-    <div class="mt-8 rounded-xl border border-dashed border-edge p-8 text-center text-sm text-ink-faint">
-      {t(locale, 'submit.form')}
-      <a href="mailto:you@example.com" class="text-violet-600 underline dark:text-violet-400">{t(locale, 'submit.email')}</a>
-      {t(locale, 'submit.meanwhile')}
-    </div>
+    <iframe
+      data-tally-src="https://tally.so/embed/J1l48d?alignLeft=1&transparentBackground=1&dynamicHeight=1"
+      loading="lazy"
+      width="100%"
+      height="420"
+      frameborder="0"
+      marginheight="0"
+      marginwidth="0"
+      title={t(locale, 'submit.h1')}
+      class="mt-8 rounded-xl border border-edge"
+    ></iframe>
+    <script is:inline async src="https://tally.so/widgets/embed.js"></script>
   </div>
 </Base>
