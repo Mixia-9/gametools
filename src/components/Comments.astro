@@ -34,34 +34,35 @@ const ready = Boolean(GISCUS.repo && GISCUS.repoId && GISCUS.categoryId);
   }
 
   {ready && (
-    <script is:inline>
-      // 让 giscus 初始主题与站点当前主题一致（而非系统偏好）
-      (function () {
-        var s = document.getElementById('giscus-script');
-        if (s) s.setAttribute('data-theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
-      })();
-    </script>
-  )}
-
-  {ready && (
+    <div class="giscus"></div>
     <script
       is:inline
-      id="giscus-script"
-      src="https://giscus.app/client.js"
-      data-repo={GISCUS.repo}
-      data-repo-id={GISCUS.repoId}
-      data-category={GISCUS.category}
-      data-category-id={GISCUS.categoryId}
-      data-mapping="pathname"
-      data-strict="0"
-      data-reactions-enabled="1"
-      data-emit-metadata="0"
-      data-input-position="top"
-      data-theme="preferred_color_scheme"
-      data-lang={locale}
-      data-loading="lazy"
-      crossorigin="anonymous"
-      async
-    />
+      define:vars={{ GISCUS, locale }}
+    >
+      // 动态创建 giscus 脚本：创建瞬间即写入与站点一致的主题，杜绝初始化竞态
+      (function () {
+        var s = document.createElement('script');
+        s.src = 'https://giscus.app/client.js';
+        s.async = true;
+        s.crossOrigin = 'anonymous';
+        var attrs = {
+          'data-repo': GISCUS.repo,
+          'data-repo-id': GISCUS.repoId,
+          'data-category': GISCUS.category,
+          'data-category-id': GISCUS.categoryId,
+          'data-mapping': 'pathname',
+          'data-strict': '0',
+          'data-reactions-enabled': '1',
+          'data-emit-metadata': '0',
+          'data-input-position': 'top',
+          'data-theme': document.documentElement.classList.contains('dark') ? 'dark' : 'light',
+          'data-lang': locale,
+        };
+        Object.keys(attrs).forEach(function (k) {
+          s.setAttribute(k, attrs[k]);
+        });
+        document.currentScript.parentElement.appendChild(s);
+      })();
+    </script>
   )}
 </section>
