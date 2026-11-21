@@ -6,6 +6,11 @@ export function toolSlug(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 }
 
+/** 工具是否属于某分类：主分类 + 附加分类（categories 数组，含主分类） */
+export function inCategory(tool: { category: string; categories?: string[] }, slug: string): boolean {
+  return (tool.categories ?? [tool.category]).includes(slug);
+}
+
 type PathEntry = { params: Record<string, string>; props: Record<string, unknown> };
 
 export function categoryPaths(): PathEntry[] {

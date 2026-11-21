@@ -9,6 +9,7 @@ interface Tool {
   url: string;
   repo?: string;
   category: string;
+  categories?: string[];
   pricing: string;
   engines: string[];
   tested: boolean;
@@ -34,7 +35,7 @@ const priceStyles: Record<string, string> = {
 
 <div
   data-tool
-  data-search={`${tool.name} ${tool.category} ${cat?.label ?? ''} ${tool.oneLiner}`.toLowerCase()}
+  data-search={`${tool.name} ${(tool.categories ?? [tool.category]).join(' ')} ${cat?.label ?? ''} ${tool.oneLiner}`.toLowerCase()}
   class="group relative flex flex-col gap-3 rounded-xl border border-edge bg-card p-4 transition hover:border-violet-500/50 hover:bg-card-hover"
 >
   <div class="flex items-start justify-between gap-2">

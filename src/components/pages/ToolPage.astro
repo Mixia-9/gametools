@@ -6,13 +6,14 @@ import tools from '../../data/tools.json';
 import categories from '../../data/categories.json';
 import { t, localePath, type Locale } from '../../i18n/ui';
 import { catLabel } from '../../i18n/categories';
-import { toolSlug } from '../../i18n/paths';
+import { toolSlug, inCategory } from '../../i18n/paths';
 
 interface Tool {
   name: string;
   url: string;
   repo?: string;
   category: string;
+  categories?: string[];
   pricing: string;
   engines: string[];
   tested: boolean;
@@ -29,7 +30,7 @@ interface Props {
 const { tool, locale = 'en' } = Astro.props;
 const cat = categories.find((c) => c.slug === tool.category);
 const catLabelStr = cat ? catLabel(cat.slug, cat.label, locale) : '';
-const similar = (tools as Tool[]).filter((tt) => tt.category === tool.category && tt.name !== tool.name).slice(0, 3);
+const similar = (tools as Tool[]).filter((tt) => tt.name !== tool.name && (tool.categories ?? [tool.category]).some((c) => inCategory(tt, c))).slice(0, 3);
 const stars = tool.rating != null ? '★'.repeat(Math.round(tool.rating)) + '☆'.repeat(5 - Math.round(tool.rating)) : null;
 const homeLabel = locale === 'ja' ? 'ホーム' : locale.startsWith('zh') ? '首页' : 'Home';
 const priceStyles: Record<string, string> = {
