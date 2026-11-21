@@ -55,9 +55,7 @@ const priceStyles: Record<string, string> = {
         {tool.tested ? t(locale, 'tool.humanTested') : t(locale, 'tool.notTested')}
       </span>
     </div>
-    <p class="max-w-2xl text-lg text-ink-muted">{tool.oneLiner}</p>
-
-    <section class="flex flex-col gap-3">
+    <section class="flex flex-col gap-2">
       <h2 class="text-sm font-semibold uppercase tracking-wide text-ink-faint">{t(locale, 'tool.canDo')}</h2>
       <div class="flex flex-wrap gap-2 text-sm">
         {
@@ -79,6 +77,8 @@ const priceStyles: Record<string, string> = {
         ))}
       </div>
     </section>
+
+    <p class="max-w-2xl text-lg text-ink-muted">{tool.oneLiner}</p>
 
     <div class="flex flex-wrap gap-2 text-xs">
       <span class={`rounded-full border px-2.5 py-1 capitalize ${priceStyles[tool.pricing] ?? priceStyles.freemium}`}>{tool.pricing}</span>
