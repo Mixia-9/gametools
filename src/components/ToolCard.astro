@@ -78,11 +78,19 @@ const priceStyles: Record<string, string> = {
     </div>
   </div>
 
+  {cat && (
+    <a
+      href={localePath(locale, `/category/${cat.slug}`)}
+      class="relative z-10 w-fit rounded-full border border-chip-border bg-chip px-2 py-0.5 text-[11px] text-ink-muted transition hover:border-violet-500/50 hover:text-ink"
+    >
+      {cat.emoji} {label}
+    </a>
+  )}
+
   <p class="line-clamp-2 text-sm text-ink-muted">{tool.oneLiner}</p>
 
   <div class="mt-auto flex flex-wrap items-center gap-2 text-[11px]">
     <span class={`rounded-full border px-2 py-0.5 ${priceStyles[tool.pricing] ?? priceStyles.freemium} capitalize`}>{tool.pricing}</span>
-    {cat && <span class="rounded-full border border-chip-border bg-chip px-2 py-0.5 text-ink-muted">{cat.emoji} {label}</span>}
     <span class="ml-auto text-ink-faint">{tool.engines.filter((e) => e !== 'any').join(' · ') || t(locale, 'card.any')}</span>
   </div>
 </div>
