@@ -10,6 +10,7 @@ interface Tool {
   repo?: string;
   category: string;
   categories?: string[];
+  capabilities?: string[];
   pricing: string;
   engines: string[];
   tested: boolean;
@@ -22,9 +23,8 @@ interface Props {
 }
 
 const { tool, locale = 'en' } = Astro.props;
-const cat = categories.find((c) => c.slug === tool.category);
-const label = cat ? catLabel(cat.slug, cat.label, locale) : '';
 const slug = toolSlug(tool.name);
+const catSlugs = tool.categories ?? [tool.category];
 
 const priceStyles: Record<string, string> = {
   free: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
@@ -35,16 +35,17 @@ const priceStyles: Record<string, string> = {
 
 <div
   data-tool
-  data-search={`${tool.name} ${(tool.categories ?? [tool.category]).join(' ')} ${cat?.label ?? ''} ${tool.oneLiner}`.toLowerCase()}
-  class="group relative flex flex-col gap-3 rounded-xl border border-edge bg-card p-4 transition hover:border-violet-500/50 hover:bg-card-hover"
+  data-search={`${tool.name} ${catSlugs.join(' ')} ${(tool.capabilities ?? []).join(' ')} ${tool.oneLiner}`.toLowerCase()}
+  class="group relative flex flex-col gap-2 rounded-xl border border-edge bg-card p-4 transition hover:border-violet-500/50 hover:bg-card-hover"
 >
-  <div class="flex items-start justify-between gap-2">
+  <!-- 行1：名字 + 元信息（徽章/直达/定价/引擎） -->
+  <div class="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
     <h3 class="font-semibold leading-tight">
       <a href={localePath(locale, `/tool/${slug}`)} class="after:absolute after:inset-0 group-hover:text-violet-600 dark:group-hover:text-violet-300">{tool.name}</a>
     </h3>
 
-    <div class="flex shrink-0 items-center gap-1.5">
-      <span class={`rounded-full border px-2 py-0.5 text-[11px] ${tool.tested ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' : 'border-chip-border bg-chip text-ink-muted'}`}>
+    <div class="flex shrink-0 flex-wrap items-center gap-1.5 text-[11px]">
+      <span class={`rounded-full border px-2 py-0.5 ${tool.tested ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' : 'border-chip-border bg-chip text-ink-muted'}`}>
         {tool.tested ? t(locale, 'card.tested') : t(locale, 'card.unverified')}
       </span>
       {tool.repo && (
@@ -75,22 +76,40 @@ const priceStyles: Record<string, string> = {
           <path d="M10 14 21 3" />
         </svg>
       </a>
+      <span class={`rounded-full border px-2 py-0.5 capitalize ${priceStyles[tool.pricing] ?? priceStyles.freemium}`}>{tool.pricing}</span>
+      <span class="text-ink-faint">{tool.engines.filter((e) => e !== 'any').join(' · ') || t(locale, 'card.any')}</span>
     </div>
   </div>
 
-  {cat && (
-    <a
-      href={localePath(locale, `/category/${cat.slug}`)}
-      class="relative z-10 w-fit rounded-full border border-chip-border bg-chip px-2 py-0.5 text-[11px] text-ink-muted transition hover:border-violet-500/50 hover:text-ink"
-    >
-      {cat.emoji} {label}
-    </a>
-  )}
+  <!-- 行2：全部分类标签 -->
+  <div class="flex flex-wrap gap-1.5 text-[11px]">
+    {
+      catSlugs.map((c) => {
+        const cc = categories.find((x) => x.slug === c);
+        if (!cc) return null;
+        return (
+          <a
+            href={localePath(locale, `/category/${c}`)}
+            class="relative z-10 rounded-full border border-chip-border bg-chip px-2 py-0.5 text-ink-muted transition hover:border-violet-500/50 hover:text-ink"
+          >
+            {cc.emoji} {catLabel(c, cc.label, locale)}
+          </a>
+        );
+      })
+    }
+  </div>
 
+  <!-- 行3：一句话简介 -->
   <p class="line-clamp-2 text-sm text-ink-muted">{tool.oneLiner}</p>
 
-  <div class="mt-auto flex flex-wrap items-center gap-2 text-[11px]">
-    <span class={`rounded-full border px-2 py-0.5 ${priceStyles[tool.pricing] ?? priceStyles.freemium} capitalize`}>{tool.pricing}</span>
-    <span class="ml-auto text-ink-faint">{tool.engines.filter((e) => e !== 'any').join(' · ') || t(locale, 'card.any')}</span>
-  </div>
+  <!-- 行4：能力清单 -->
+  {
+    tool.capabilities && tool.capabilities.length > 0 && (
+      <div class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-ink-faint">
+        {tool.capabilities.map((cap) => (
+          <span>✦ {cap}</span>
+        ))}
+      </div>
+    )
+  }
 </div>
