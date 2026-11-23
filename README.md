@@ -23,8 +23,9 @@ src/
     ui.ts             # 四语 UI 文案字典 + localePath/t() 工具函数
     categories.ts     # 分类的中/繁/日翻译
     paths.ts          # 静态路径生成（含多语言展开）
-  components/         # ToolCard / CategoryCard / LanguageSwitcher / Comments
+  components/         # ToolCard / CategoryCard / LanguageSwitcher / Comments / FocusBadge / GameFilter
     pages/            # 5 个共享页面组件（接收 locale）
+  scripts/toolFilter.ts  # “只看专为游戏”筛选开关的状态与样式切换
   layouts/Base.astro  # 页头页脚 + SEO(hreflang/canonical) + 主题 + 语言切换
   pages/
     index|category|tool|submit|about   # 英文路由（无前缀，默认语言）
@@ -45,11 +46,16 @@ src/
 
 ```json
 { "name": "Example Tool", "url": "https://example.com", "repo": "https://github.com/org/repo",
-  "category": "textures", "pricing": "freemium", "engines": ["unity"], "tested": false,
+  "focus": "general", "category": "textures", "categories": ["textures", "concept-art"],
+  "capabilities": ["PBR texture generation"],
+  "pricing": "freemium", "engines": ["unity"], "tested": false,
   "oneLiner": "One sentence about what it does." }
 ```
 
-`repo` 可选（开源工具填 GitHub 地址，卡片和详情页会显示 GitHub 入口）。
+- `focus`（必填）：`"game"` = 专为游戏设计，`"general"` = 通用工具。卡片和详情页会显示对应标签；分类页里专为游戏的工具排在前面，并可“只看专为游戏”。判断标准是产品本身是否为游戏开发做的，而不是游戏开发者是否在用。
+- `categories` 可选：工具跨多个分类时列出全部归属（要包含主分类 `category`）。
+- `capabilities` 可选：能力清单，详情页逐条显示，也会进入站内搜索。
+- `repo` 可选（开源工具填 GitHub 地址，卡片和详情页会显示 GitHub 入口）。
 
 实测过的工具把 `tested` 改为 `true`（卡片会从 ⏳ 变 ✅），并可加主编评分：
 

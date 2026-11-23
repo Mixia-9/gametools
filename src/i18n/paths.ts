@@ -11,6 +11,11 @@ export function inCategory(tool: { category: string; categories?: string[] }, sl
   return (tool.categories ?? [tool.category]).includes(slug);
 }
 
+/** 专为游戏设计的工具（focus === 'game'）排前面，组内保持原有顺序 */
+export function gameFirst<T extends { focus?: string }>(list: T[]): T[] {
+  return [...list].sort((a, b) => Number(b.focus === 'game') - Number(a.focus === 'game'));
+}
+
 type PathEntry = { params: Record<string, string>; props: Record<string, unknown> };
 
 export function categoryPaths(): PathEntry[] {

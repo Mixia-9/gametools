@@ -2,6 +2,7 @@
 import Base from '../../layouts/Base.astro';
 import ToolCard from '../ToolCard.astro';
 import Comments from '../Comments.astro';
+import FocusBadge from '../FocusBadge.astro';
 import tools from '../../data/tools.json';
 import categories from '../../data/categories.json';
 import { t, localePath, type Locale } from '../../i18n/ui';
@@ -15,6 +16,7 @@ interface Tool {
   category: string;
   categories?: string[];
   capabilities?: string[];
+  focus?: 'game' | 'general';
   pricing: string;
   engines: string[];
   tested: boolean;
@@ -54,6 +56,7 @@ const priceStyles: Record<string, string> = {
       <span class={`rounded-full border px-2.5 py-1 text-xs ${tool.tested ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' : 'border-chip-border bg-chip text-ink-muted'}`}>
         {tool.tested ? t(locale, 'tool.humanTested') : t(locale, 'tool.notTested')}
       </span>
+      {tool.focus && <FocusBadge focus={tool.focus} locale={locale} size="md" />}
     </div>
     <div class="flex flex-wrap gap-2 text-sm">
       {

@@ -1,0 +1,26 @@
+---
+import { t, type Locale } from '../i18n/ui';
+
+interface Props {
+  /** 当前范围内专为游戏的工具数量；为 0 时不渲染 */
+  count: number;
+  locale?: Locale;
+}
+
+const { count, locale = 'en' } = Astro.props;
+---
+
+{
+  count > 0 && (
+    <button
+      id="game-filter"
+      type="button"
+      aria-pressed="false"
+      class="inline-flex shrink-0 cursor-pointer items-center gap-1.5 self-start rounded-full border border-edge bg-card px-3 py-1.5 text-sm text-ink-muted transition hover:border-violet-500/50 hover:bg-card-hover sm:self-auto"
+    >
+      <span aria-hidden="true">🎮</span>
+      <span>{t(locale, 'filter.gameOnly')}</span>
+      <span class="rounded-full bg-chip px-1.5 text-xs tabular-nums text-ink-muted">{count}</span>
+    </button>
+  )
+}

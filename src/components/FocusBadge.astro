@@ -1,0 +1,23 @@
+---
+import { t, type Locale } from '../i18n/ui';
+
+interface Props {
+  focus: 'game' | 'general';
+  locale?: Locale;
+  size?: 'sm' | 'md';
+}
+
+const { focus, locale = 'en', size = 'sm' } = Astro.props;
+
+const styles: Record<string, string> = {
+  game: 'border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-400',
+  general: 'border-chip-border bg-chip text-ink-muted',
+};
+---
+
+<span
+  class={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border font-medium ${size === 'sm' ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-xs'} ${styles[focus]}`}
+>
+  <span aria-hidden="true">{focus === 'game' ? '🎮' : '🔧'}</span>
+  <span>{t(locale, `focus.${focus}`)}</span>
+</span>

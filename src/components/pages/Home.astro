@@ -6,6 +6,7 @@ import tools from '../../data/tools.json';
 import categories from '../../data/categories.json';
 import { t, localePath, type Locale } from '../../i18n/ui';
 import { inCategory } from '../../i18n/paths';
+import GameFilter from '../GameFilter.astro';
 
 interface Props {
   locale?: Locale;
@@ -23,13 +24,14 @@ const counts = Object.fromEntries(categories.map((c) => [c.slug, tools.filter((t
     </h1>
     <p class="mx-auto mt-4 max-w-2xl text-ink-muted">{t(locale, 'hero.sub')}</p>
 
-    <div class="mx-auto mt-8 max-w-xl">
+    <div class="mx-auto mt-8 flex max-w-xl flex-col gap-3 sm:flex-row sm:items-center">
       <input
         id="search"
         type="search"
         placeholder={t(locale, 'search.ph', { n: tools.length })}
         class="w-full rounded-xl border border-edge bg-card px-4 py-3 text-ink placeholder-ink-faint outline-none focus:border-violet-500"
       />
+      <GameFilter locale={locale} count={tools.filter((tt) => tt.focus === 'game').length} />
     </div>
 
     <p class="mt-3 text-sm text-ink-faint">
@@ -56,21 +58,29 @@ const counts = Object.fromEntries(categories.map((c) => [c.slug, tools.filter((t
   </section>
 
   <script>
-    const input = document.getElementById('search');
+    import { setupGameFilter, isGameOnly } from '../../scripts/toolFilter';
+
+    const input = document.getElementById('search') as HTMLInputElement | null;
     const cards = Array.from(document.querySelectorAll('[data-tool]'));
     const countEl = document.getElementById('tool-count');
     const emptyEl = document.getElementById('empty');
 
-    input?.addEventListener('input', () => {
-      const v = input.value.trim().toLowerCase();
+    // 搜索关键词与“只看专为游戏”开关可以叠加
+    const apply = () => {
+      const v = input?.value.trim().toLowerCase() ?? '';
+      const gameOnly = isGameOnly();
       let n = 0;
       for (const card of cards) {
-        const hit = !v || (card.getAttribute('data-search') ?? '').includes(v);
+        const hitSearch = !v || (card.getAttribute('data-search') ?? '').includes(v);
+        const hit = hitSearch && (!gameOnly || card.getAttribute('data-focus') === 'game');
         card.classList.toggle('hidden', !hit);
         if (hit) n++;
       }
       if (countEl) countEl.textContent = String(n);
       emptyEl?.classList.toggle('hidden', n > 0);
-    });
+    };
+
+    setupGameFilter(apply);
+    input?.addEventListener('input', apply);
   </script>
 </Base>
