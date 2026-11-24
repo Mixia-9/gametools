@@ -25,7 +25,7 @@ src/
     paths.ts          # 静态路径生成（含多语言展开）
   components/         # ToolCard / CategoryCard / LanguageSwitcher / Comments / FocusBadge / GameFilter
     pages/            # 5 个共享页面组件（接收 locale）
-  scripts/toolFilter.ts  # “只看专为游戏”筛选开关的状态与样式切换
+  scripts/toolFilter.ts  # “只看专为游戏”筛选开关：切换状态与样式，并同步到地址栏（?games=1）
   layouts/Base.astro  # 页头页脚 + SEO(hreflang/canonical) + 主题 + 语言切换
   pages/
     index|category|tool|submit|about   # 英文路由（无前缀，默认语言）

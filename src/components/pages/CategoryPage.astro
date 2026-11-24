@@ -63,7 +63,7 @@ const blurb = catBlurb(cat.slug, cat.blurb, locale);
   </p>
 
   <script>
-    import { setupGameFilter, isGameOnly } from '../../scripts/toolFilter';
+    import { setupGameFilter, applyGameFilterFromUrl, isGameOnly } from '../../scripts/toolFilter';
 
     const cards = Array.from(document.querySelectorAll('[data-tool]'));
     const countEl = document.getElementById('cat-count');
@@ -85,5 +85,7 @@ const blurb = catBlurb(cat.slug, cat.blurb, locale);
     };
 
     setupGameFilter(apply);
+    // 从开了筛选的首页点分类卡片进来（地址带 ?games=1）时，自动打开筛选
+    applyGameFilterFromUrl();
   </script>
 </Base>

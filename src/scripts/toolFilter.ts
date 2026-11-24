@@ -1,6 +1,7 @@
 /**
  * 列表页的“只看专为游戏”筛选开关。
  * 卡片带 data-focus="game" | "general"；点击后切换按钮状态并调用 onChange，由页面决定隐藏哪些卡片。
+ * 状态会写进地址栏（?games=1），刷新、返回、带着筛选跳到分类页后都能保持。
  */
 const IDLE = ['border-edge', 'bg-card', 'text-ink-muted'];
 const PRESSED = ['border-violet-500/60', 'bg-violet-500/10', 'text-violet-700', 'dark:text-violet-400'];
@@ -16,6 +17,19 @@ export function setupGameFilter(onChange: () => void) {
     btn.setAttribute('aria-pressed', String(on));
     btn.classList.remove(...(on ? IDLE : PRESSED));
     btn.classList.add(...(on ? PRESSED : IDLE));
+
+    const url = new URL(location.href);
+    if (on) url.searchParams.set('games', '1');
+    else url.searchParams.delete('games');
+    history.replaceState(null, '', url);
+
     onChange();
   });
+}
+
+/** 地址栏带 ?games=1 时（例如从开了筛选的页面点进来）自动打开筛选 */
+export function applyGameFilterFromUrl() {
+  if (new URLSearchParams(location.search).get('games') === '1' && !isGameOnly()) {
+    document.getElementById('game-filter')?.click();
+  }
 }

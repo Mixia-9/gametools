@@ -4,20 +4,31 @@ import { catLabel, catBlurb } from '../i18n/categories';
 
 interface Props {
   cat: { slug: string; label: string; emoji: string; blurb: string };
+  /** 该分类下的工具总数 */
   count: number;
+  /** 其中专为游戏的工具数量；首页开“只看专为游戏”时据此隐藏卡片、改写数量 */
+  gameCount: number;
   locale?: Locale;
 }
 
-const { cat, count, locale = 'en' } = Astro.props;
+const { cat, count, gameCount, locale = 'en' } = Astro.props;
+const href = localePath(locale, `/category/${cat.slug}`);
 ---
 
 <a
-  href={localePath(locale, `/category/${cat.slug}`)}
+  href={href}
+  data-cat={cat.slug}
+  data-game={gameCount}
+  data-href={href}
   class="flex flex-col gap-2 rounded-xl border border-edge bg-card p-5 transition hover:border-violet-500/50 hover:bg-card-hover"
 >
   <div class="flex items-center justify-between">
     <span class="text-2xl">{cat.emoji}</span>
-    <span class="rounded-full border border-chip-border bg-chip px-2 py-0.5 text-[11px] text-ink-muted">{t(locale, 'cat.tools', { n: count })}</span>
+    <span
+      data-cat-count
+      data-all={t(locale, 'cat.tools', { n: count })}
+      data-filtered={t(locale, 'cat.toolsFiltered', { n: count, shown: '__SHOWN__' })}
+      class="rounded-full border border-chip-border bg-chip px-2 py-0.5 text-[11px] text-ink-muted">{t(locale, 'cat.tools', { n: count })}</span>
   </div>
   <h3 class="font-semibold">{catLabel(cat.slug, cat.label, locale)}</h3>
   <p class="line-clamp-2 text-sm text-ink-muted">{catBlurb(cat.slug, cat.blurb, locale)}</p>
