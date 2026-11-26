@@ -75,6 +75,25 @@ const gameCounts = Object.fromEntries(
     </a>
   </section>
 
+  <!-- 重生之我是英雄联盟职业选手：只有简体中文版，所以只放在简中首页 -->
+  {
+    locale === 'zh-CN' && (
+      <section class="mt-4">
+        <a
+          href="/zh-CN/lol"
+          class="flex flex-col items-center gap-4 rounded-2xl border border-edge bg-card p-8 text-center transition hover:border-violet-500/50 hover:bg-card-hover sm:flex-row sm:text-left"
+        >
+          <span class="text-4xl" aria-hidden="true">🏆</span>
+          <span class="flex-1">
+            <strong>重生之我是英雄联盟职业选手</strong>
+            <span class="block text-sm text-ink-muted">从 S3 打到 S5 的文字生涯模拟：打排位、加属性、加入当年的真实战队，或者抽卡自己建队。</span>
+          </span>
+          <span class="shrink-0 rounded-xl bg-violet-600 px-5 py-2.5 font-semibold text-white">开始生涯 →</span>
+        </a>
+      </section>
+    )
+  }
+
   <script>
     import { setupGameFilter, applyGameFilterFromUrl, isGameOnly } from '../../scripts/toolFilter';
 

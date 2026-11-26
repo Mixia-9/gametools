@@ -10,7 +10,7 @@ export default defineConfig({
     routing: { prefixDefaultLocale: false },
   },
   // 游戏页与“找工具”无关，不放进站点地图
-  integrations: [sitemap({ filter: (page) => !/\/play\/?$/.test(page) })],
+  integrations: [sitemap({ filter: (page) => !/\/(play|lol)\/?$/.test(page) })],
   vite: {
     plugins: [tailwindcss()],
   },

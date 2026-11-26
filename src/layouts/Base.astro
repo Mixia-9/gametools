@@ -9,11 +9,13 @@ interface Props {
   locale?: Locale;
   /** 不让搜索引擎收录这一页（例如游戏页） */
   noindex?: boolean;
+  /** 这一页只有当前语言版本（例如中文游戏）：不输出其他语言的链接 */
+  singleLocale?: boolean;
 }
 
 const SITE = 'https://www.gametools.info';
 
-const { locale = 'en', title = t(locale, 'title.default'), description = t(locale, 'hero.sub'), noindex = false } = Astro.props;
+const { locale = 'en', title = t(locale, 'title.default'), description = t(locale, 'hero.sub'), noindex = false, singleLocale = false } = Astro.props;
 
 const canonicalPath = stripLocale(Astro.url.pathname);
 ---
@@ -27,8 +29,8 @@ const canonicalPath = stripLocale(Astro.url.pathname);
     <meta name="generator" content={Astro.generator} />
     {noindex && <meta name="robots" content="noindex" />}
     <link rel="canonical" href={SITE + localePath(locale, canonicalPath)} />
-    {locales.map((l) => <link rel="alternate" hreflang={htmlLang[l]} href={SITE + localePath(l, canonicalPath)} />)}
-    <link rel="alternate" hreflang="x-default" href={SITE + localePath('en', canonicalPath)} />
+    {!singleLocale && locales.map((l) => <link rel="alternate" hreflang={htmlLang[l]} href={SITE + localePath(l, canonicalPath)} />)}
+    {!singleLocale && <link rel="alternate" hreflang="x-default" href={SITE + localePath('en', canonicalPath)} />}
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎮</text></svg>" />
     <script is:inline>
       (function () {
@@ -50,10 +52,12 @@ const canonicalPath = stripLocale(Astro.url.pathname);
           <nav class="hidden items-center gap-4 text-sm text-ink-muted md:flex">
             <a href={localePath(locale, '/#categories')} class="hover:text-ink">{t(locale, 'nav.categories')}</a>
             <a href={localePath(locale, '/play')} class="hover:text-ink">🎮 {t(locale, 'nav.play')}</a>
+            {/* 职业选手生涯模拟只有简体中文版 */}
+            {locale === 'zh-CN' && <a href="/zh-CN/lol" class="hover:text-ink">🏆 生涯模拟</a>}
             <a href={localePath(locale, '/submit')} class="hover:text-ink">{t(locale, 'nav.submit')}</a>
             <a href={localePath(locale, '/about')} class="hover:text-ink">{t(locale, 'nav.about')}</a>
           </nav>
-          <LanguageSwitcher locale={locale} path={canonicalPath} />
+          {!singleLocale && <LanguageSwitcher locale={locale} path={canonicalPath} />}
           <button
             id="theme-toggle"
             aria-label={t(locale, 'theme.aria')}

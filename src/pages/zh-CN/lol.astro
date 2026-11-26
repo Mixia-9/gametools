@@ -1,0 +1,24 @@
+---
+import Base from '../../layouts/Base.astro';
+import LolProGame from '../../components/games/LolProGame.astro';
+---
+
+<!-- 只有简体中文一个版本，所以不输出其他语言的链接；游戏页与“找工具”无关，不让搜索引擎收录 -->
+<Base locale="zh-CN" title="重生之我是英雄联盟职业选手 — GameTools" description="文字生涯模拟：从 S3 开始，选位置、打排位、加属性、加入 LPL 战队或者自己抽卡建队，冲击全球总决赛。" noindex singleLocale>
+  <div class="mx-auto max-w-6xl">
+    <h1 class="text-3xl font-extrabold tracking-tight">重生之我是英雄联盟职业选手</h1>
+    <p class="mt-2 max-w-3xl text-ink-muted">
+      2013 年，你带着上一世的记忆重生。打排位、练属性、选一条职业道路，从 S3 一路打到 S5。战队和选手用的是当年的真实名单，非卖品挖不走。
+    </p>
+
+    <div class="mt-6">
+      <LolProGame />
+    </div>
+
+    <p class="mt-6 text-xs leading-relaxed text-ink-faint">
+      名单来源：LPL 2013–2015 各赛段、EU LCS 2013 年及 2014 年春季、2013–2015 年全球总决赛的参赛队伍与首发，取自 Leaguepedia 和英文维基百科。
+      韩国和北美联赛、EU 2014 年夏季之后的联赛名单还没核实完，所以这三个赛区暂时不能选（它们在世界赛里的队伍照常出现）。
+      队伍和选手的实力数值是按当年成绩估的，不是查来的数据。
+    </p>
+  </div>
+</Base>

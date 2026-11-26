@@ -51,6 +51,16 @@ src/
 - 调参都在 `src/components/games/StackGame.astro` 顶部（移动幅度 `AMP`、速度、画面位置）和 `src/games/stackLogic.ts`（完美对齐的容差）。
 - 开发环境下页面里有 `window.__stack`（`get()` 读状态、`tick(秒)` 手动推进时间并重画），方便在浏览器里调试；正式构建会剔除。
 
+### 重生之我是英雄联盟职业选手（/zh-CN/lol）
+
+文字生涯模拟，只有简体中文。从 S3 打到 S5：每天排位 / 训练赛 / 加练 / 休息，训练点自己加到反应、对线、运营、意识、心态上；赛季初可以加入一支真实战队，或者留在自己的战队里抽卡换人；世界赛按当年的真实名单和分组进行。
+
+- 代码：`src/games/lol/`（`seasons.ts` 是名单数据，`data.ts` 是数据格式和属性生成，其余是引擎），界面在 `src/components/games/LolProGame.astro`。
+- 名单核实情况（2026-11）：LPL 2013–2015、EU LCS 2013 年和 2014 年春季、三届世界赛已核实并录入；**LCK、NA LCS 的联赛名单和 EU 2014 夏季之后没有查到**，所以 `availableRegions()` 目前只放开 LPL。补上 `seasons.ts` 里对应赛区的队伍后，其他赛区会自动可选。
+- 非卖品：名单里 ID 前加 `!`。抽不到，也不能通过加入战队挤掉那个位置的人。
+- 这页 `noindex`、不进站点地图、不输出其他语言的链接（`Base` 的 `singleLocale`）。
+- 测试：`npm run test:lol`（数据完整性、非卖品、外援上限、世界赛名单与赛制），`npm run sim:lol [局数]`（几种打法的机器人各跑若干局完整生涯，看成长曲线和冠军率）。
+
 ## 如何新增一个工具
 
 往 `src/data/tools.json` 追加一行（slug 由 name 自动生成）：

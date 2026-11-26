@@ -1,0 +1,532 @@
+---
+// 「重生之我是英雄联盟职业选手」——文字生涯模拟游戏（目前只有简体中文）
+---
+<div id="lol-pro" class="lol-pro"></div>
+
+<script>
+  import { ATTRS, POSITIONS, POS_ORDER, REGIONS, TRAITS, type Attr, type Position, type ProPlayer, type Region } from '../../games/lol/data';
+  import * as E from '../../games/lol/engine';
+
+  type GameState = E.GameState;
+  type Ui = {
+    view: 'main' | 'teams' | 'gacha';
+    pool: E.Pool;
+    last: ProPlayer[];
+    notice: string;
+    pick: { region: Region; pos: Position; trait: string };
+    /** 开始画面两个输入框的内容 */
+    name: string;
+    team: string;
+  };
+
+  const root = document.getElementById('lol-pro') as HTMLElement;
+  // 当前这局的生涯状态；null = 还在开始画面
+  let s: GameState | null = E.load();
+  const ui: Ui = {
+    view: 'main',
+    pool: 'home',
+    last: [],
+    notice: '',
+    pick: { region: 'LPL', pos: 'mid', trait: TRAITS.find((t) => t.start)!.id },
+    name: '重生者',
+    team: '重生战队',
+  };
+
+  const esc = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+  const posName = (p: Position) => POSITIONS.find((x) => x.id === p)!.name;
+  const num = (v: number) => String(Math.round(v * 10) / 10);
+
+  const RARITY_CLS = [
+    'border-zinc-300 text-zinc-600 dark:border-zinc-600 dark:text-zinc-400',
+    'border-emerald-400/60 text-emerald-700 dark:text-emerald-400',
+    'border-sky-400/70 text-sky-700 dark:text-sky-400',
+    'border-violet-500 text-violet-700 dark:text-violet-400',
+    'border-amber-400 text-amber-600 dark:text-amber-400',
+  ];
+  const LOG_CLS: Record<E.LogEntry['kind'], string> = {
+    info: 'text-ink-muted',
+    good: 'text-emerald-600 dark:text-emerald-400',
+    bad: 'text-red-600 dark:text-red-400',
+    match: 'text-ink',
+    title: 'font-semibold text-violet-600 dark:text-violet-400',
+    gacha: 'text-amber-700 dark:text-amber-400',
+  };
+
+  const bar = (v: number, max: number, cls: string) =>
+    `<div class="h-1.5 w-full overflow-hidden rounded-full bg-chip"><div class="h-full rounded-full ${cls}" style="width:${Math.max(0, Math.min(100, (v / max) * 100))}%"></div></div>`;
+
+  /** 五维的迷你条：越长颜色越深 */
+  const attrBars = (p: { attrs?: Record<Attr, number> }) =>
+    `<span class="flex items-center gap-0.5" title="${p.attrs ? esc(ATTRS.map((a) => `${a.name} ${p.attrs![a.id]}`).join(' · ')) : '青训选手，属性未知'}">${ATTRS.map(
+      (a) => `<i class="h-1.5 w-2.5 rounded-full bg-violet-500" style="${p.attrs ? `opacity:${0.15 + (p.attrs![a.id] / 100) * 0.85}` : 'opacity:0.12'}"></i>`
+    ).join('')}</span>`;
+
+  type Row = { id: string; pos: Position; overall: number; attrs?: Record<Attr, number>; locked?: boolean; me?: boolean; note?: string };
+
+  const playerRow = (p: Row) => `
+    <div class="flex items-center justify-between gap-2 py-1 text-sm ${p.me ? 'font-semibold text-ink' : 'text-ink-muted'}">
+      <span class="flex min-w-0 items-center gap-1.5">
+        <span class="w-8 shrink-0 text-xs text-ink-faint">${posName(p.pos)}</span>
+        <span class="truncate">${esc(p.id)}${p.locked ? ' <span title="非卖品：抽不到，也不能通过加入战队挤掉">🔒</span>' : ''}${p.note ? ` <span class="text-xs text-ink-faint">${esc(p.note)}</span>` : ''}</span>
+      </span>
+      <span class="flex shrink-0 items-center gap-2">${attrBars(p)}<b class="w-7 text-right tabular-nums ${p.me ? 'text-ink' : 'text-ink'}">${num(p.overall)}</b></span>
+    </div>`;
+
+  /** 一支队伍的五名首发；自己的位置显示成自己 */
+  function rosterOf(st: GameState, teamId: string): Row[] {
+    return POS_ORDER.map((pos) => {
+      if (pos === st.pos && teamId === st.team.id) {
+        return { id: `${st.name}（你）`, pos, overall: E.overall(st), attrs: st.attrs, me: true };
+      }
+      if (teamId === 'own') {
+        const id = st.team.members[pos];
+        const pro = id ? E.findPro(st, id) : undefined;
+        return pro ? { ...pro } : { id: '青训选手', pos, overall: st.team.trainees[pos] };
+      }
+      const pro = E.cur(st).byId[teamId]?.roster[pos];
+      return pro ? { ...pro } : { id: '—', pos, overall: E.cur(st).byId[teamId]?.rating ?? 50 };
+    });
+  }
+
+  const teamHead = (st: GameState, id: string) =>
+    `<div class="flex items-baseline justify-between gap-2"><span class="font-semibold">${esc(E.teamLabel(st, id))}</span><span class="text-sm text-ink-faint">实力 <b class="text-ink">${num(E.teamRating(st, id))}</b></span></div>`;
+
+  const card = (title: string, body: string, extra = '') =>
+    `<section class="rounded-xl border border-edge bg-card p-4 ${extra}"><h3 class="mb-2 text-sm font-bold uppercase tracking-wide text-ink-faint">${title}</h3>${body}</section>`;
+
+  // ---------- 各个画面 ----------
+  function createScreen(): string {
+    const save = E.load();
+    const regions = E.availableRegions();
+    return `
+      <div class="mx-auto max-w-2xl space-y-4">
+        <div class="rounded-xl border border-edge bg-card p-6">
+          <h2 class="text-xl font-extrabold">开始新的生涯</h2>
+          <p class="mt-1 text-sm text-ink-muted">2013 年，你带着上一世的记忆重生。选一个赛区、一个位置和一条开局词条，从 S3 打到 S5。</p>
+          <label class="mt-4 block text-sm font-semibold">你的游戏 ID
+            <input id="lol-name" maxlength="12" value="${esc(ui.name)}" class="mt-1 w-full rounded-lg border border-edge bg-page px-3 py-2 text-ink outline-none focus:border-violet-500" />
+          </label>
+          <p class="mt-4 text-sm font-semibold">赛区</p>
+          <div class="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            ${REGIONS.map((r) =>
+              regions.includes(r.id)
+                ? `<button type="button" data-pick="region" data-v="${r.id}" class="pick rounded-lg border px-3 py-2 text-left transition ${ui.pick.region === r.id ? 'border-violet-500 bg-violet-500/10' : 'border-edge hover:border-violet-500/50'}"><b>${r.name}</b><span class="block text-xs text-ink-faint">${r.desc}</span></button>`
+                : `<div title="这个赛区当年的联赛名单还没核实完，暂时不能选" class="cursor-not-allowed rounded-lg border border-dashed border-edge px-3 py-2 opacity-60"><b>${r.name}</b><span class="block text-xs text-ink-faint">名单核实中</span></div>`
+            ).join('')}
+          </div>
+          <p class="mt-4 text-sm font-semibold">位置</p>
+          <div class="mt-1 grid grid-cols-5 gap-2">
+            ${POSITIONS.map((p) => `<button type="button" data-pick="pos" data-v="${p.id}" title="${p.weights ? Object.entries(p.weights).sort((a, b) => Number(b[1]) - Number(a[1])).slice(0, 2).map(([k]) => ATTRS.find((a) => a.id === k)!.name).join('、') + '最重要' : ''}" class="pick rounded-lg border px-2 py-2 text-sm transition ${ui.pick.pos === p.id ? 'border-violet-500 bg-violet-500/10 font-semibold text-ink' : 'border-edge text-ink-muted hover:border-violet-500/50'}">${p.name}</button>`).join('')}
+          </div>
+          <p class="mt-4 text-sm font-semibold">开局词条（选一个）</p>
+          <div class="mt-1 grid gap-2">
+            ${TRAITS.filter((t) => t.start).map(
+              (t) => `<button type="button" data-pick="trait" data-v="${t.id}" class="pick rounded-lg border px-3 py-2 text-left transition ${ui.pick.trait === t.id ? 'border-violet-500 bg-violet-500/10' : 'border-edge hover:border-violet-500/50'}"><b class="text-ink">${t.name}</b><span class="block text-xs text-ink-muted">${t.desc}</span></button>`
+            ).join('')}
+          </div>
+          <label class="mt-4 block text-sm font-semibold">你的战队叫什么
+            <input id="lol-team" maxlength="12" value="${esc(ui.team)}" class="mt-1 w-full rounded-lg border border-edge bg-page px-3 py-2 text-ink outline-none focus:border-violet-500" />
+          </label>
+          <button type="button" data-act="new" class="mt-5 w-full rounded-xl bg-violet-600 px-5 py-3 font-semibold text-white transition hover:bg-violet-500">开始生涯</button>
+        </div>
+        ${save ? `<section class="rounded-xl border border-edge bg-card p-5"><h3 class="font-bold">继续上次的生涯</h3><p class="mt-1 text-sm text-ink-muted">${esc(save.name)} · ${E.cur(save).id} · ${esc(save.team.name)}</p><button type="button" data-act="resume" class="mt-3 rounded-xl bg-violet-600 px-5 py-2.5 font-semibold text-white transition hover:bg-violet-500">继续</button></section>` : ''}
+      </div>`;
+  }
+
+  function todayCard(st: GameState): string {
+    if (st.modal?.kind === 'seasonStart') {
+      const last = st.history[st.history.length - 1];
+      return card(
+        `${E.cur(st).id} 赛季开始`,
+        `<p class="text-ink-muted">${E.cur(st).year} 年，你 ${st.age} 岁，效力于 <b class="text-ink">${esc(st.team.name)}</b>。</p>
+        ${last ? `<table class="mt-3 w-full text-sm"><tbody>
+          <tr class="border-t border-edge"><td class="py-1 text-ink-faint">上赛季（${last.id}）</td><td class="py-1 text-right">春季赛 ${esc(last.spring)} · 夏季赛 ${esc(last.summer)} · 世界赛 ${esc(last.worlds)}</td></tr>
+          <tr class="border-t border-edge"><td class="py-1 text-ink-faint">获得荣誉</td><td class="py-1 text-right">${last.honors.length ? esc(last.honors.join('、')) : '无'}</td></tr>
+        </tbody></table>` : ''}
+        <p class="mt-3 text-sm text-ink-muted">现在是转会期：可以申请加入其他战队，或者留在自己的战队抽卡换人。</p>
+        <div class="mt-4 flex flex-wrap gap-2">
+          <button type="button" data-act="seasonTeams" class="rounded-xl bg-violet-600 px-5 py-2.5 font-semibold text-white transition hover:bg-violet-500">看看转会市场</button>
+          <button type="button" data-act="seasonGo" class="rounded-xl border border-edge px-5 py-2.5 font-semibold text-ink transition hover:border-violet-500/50">开始训练</button>
+        </div>`
+      );
+    }
+    if (st.result) return resultCard(st, st.result);
+    if (st.pending) return matchCard(st, st.pending);
+    if (st.injury > 0) {
+      return card(
+        '带伤休战',
+        `<p class="text-ink-muted">你正在养伤，还要休战 <b class="text-ink">${st.injury}</b> 天。伤好之前不能训练；比赛日照常上场，但实力会打折扣。</p>
+        <button type="button" data-act="restInjury" class="mt-4 rounded-xl bg-violet-600 px-5 py-2.5 font-semibold text-white transition hover:bg-violet-500">静养一天</button>`
+      );
+    }
+    const window = E.isWindow(st);
+    return card(
+      `${E.today(st)} · ${E.phaseName(st)}${window ? '（转会期）' : ''}`,
+      `<div class="grid gap-2 sm:grid-cols-2">
+        ${E.ACTIONS.map((a) => {
+          const c = E.canDo(st, a.id);
+          const cost = a.id === 'rank' && st.traits.includes('grinder') ? a.cost - 5 : a.cost;
+          return `<div class="rounded-lg border border-edge p-3 ${c.ok ? '' : 'opacity-50'}">
+            <div class="flex items-baseline justify-between"><b>${a.name}</b><span class="text-xs text-ink-faint">体力 −${cost}</span></div>
+            <p class="mt-0.5 text-xs text-ink-muted">${a.id === 'rank' ? `排位上分，赚一点资金` : a.desc}</p>
+            <div class="mt-2 flex flex-wrap items-center gap-1.5">
+              <button type="button" data-act="act" data-v="${a.id}" data-n="1" ${c.ok ? '' : 'disabled'} class="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:bg-zinc-400 dark:disabled:bg-zinc-600">做一天</button>
+              ${c.ok ? `<button type="button" data-act="act" data-v="${a.id}" data-n="5" class="rounded-lg border border-edge px-3 py-1.5 text-xs text-ink-muted transition hover:border-violet-500/50 hover:text-ink">连续 5 天</button>` : `<span class="text-xs text-red-600 dark:text-red-400">${esc(c.why)}</span>`}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`
+    );
+  }
+
+  function matchCard(st: GameState, m: E.Pending): string {
+    return card(
+      `比赛日 · ${esc(m.label)}`,
+      `<div class="grid gap-4 sm:grid-cols-2">
+        <div>${teamHead(st, st.team.id)}<div class="mt-1">${rosterOf(st, st.team.id).map(playerRow).join('')}</div></div>
+        <div>${teamHead(st, m.opp)}<div class="mt-1">${rosterOf(st, m.opp).map(playerRow).join('')}</div></div>
+      </div>
+      <p class="mt-3 text-sm text-ink-muted">赛制：${m.bo === 1 ? '单场决胜' : `BO${m.bo}`}${m.elim ? '，输了就出局' : ''}。</p>
+      <button type="button" data-act="play" class="mt-4 rounded-xl bg-violet-600 px-5 py-2.5 font-semibold text-white transition hover:bg-violet-500">开始比赛</button>`
+    );
+  }
+
+  function resultCard(st: GameState, r: E.SeriesResult): string {
+    return card(
+      `${esc(r.label)}：${r.won ? '赢了' : '输了'} ${r.win}-${r.lose}`,
+      `<p class="text-sm text-ink-muted">对手 ${esc(E.teamLabel(st, r.opp))}</p>
+      <ol class="mt-3 space-y-2">${r.games.map(
+        (g, i) => `<li class="rounded-lg border border-edge p-3 text-sm">
+          <div class="flex flex-wrap items-center justify-between gap-1">
+            <span class="font-semibold ${g.win ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}">第 ${i + 1} 局 ${g.win ? '胜' : '负'}</span>
+            <span class="text-ink">${esc(g.champ)}　<b class="tabular-nums">${g.k}/${g.d}/${g.a}</b>　<span class="text-ink-faint">${g.dur} 分钟</span></span>
+            <span class="tabular-nums">评分 <b class="${g.score >= 8 ? 'text-emerald-600 dark:text-emerald-400' : g.score < 6 ? 'text-red-600 dark:text-red-400' : 'text-ink'}">${num(g.score)}</b>${g.mvp ? ' <span class="rounded bg-amber-400 px-1 text-xs font-bold text-zinc-900">MVP</span>' : ''}</span>
+          </div>
+          <p class="mt-1 text-ink-muted">${esc(g.note)}</p>
+        </li>`
+      ).join('')}</ol>
+      <p class="mt-3 text-sm text-ink-muted">${esc(r.after)}</p>
+      <button type="button" data-act="continue" class="mt-4 rounded-xl bg-violet-600 px-5 py-2.5 font-semibold text-white transition hover:bg-violet-500">继续</button>`
+    );
+  }
+
+  function leagueCard(st: GameState): string | null {
+    const stage = st.pending?.split ?? (st.result?.split ?? null);
+    const step = E.stepOf(st);
+    const which: E.SplitId | null = stage ?? (step?.phase === 'springPo' ? 'spring' : step?.phase === 'summerPo' ? 'summer' : step?.phase === 'spring' ? 'spring' : step?.phase === 'summer' ? 'summer' : null);
+    const sp = which ? st.split[which] : null;
+    if (!which || !sp) return null;
+    const order = E.tableOrder(st, sp);
+    const po = sp.playoffs;
+    return card(
+      `${E.splitName(which)} · 积分榜`,
+      `<table class="w-full text-sm"><tbody>${order.map((id, i) => {
+        const t = sp.table[id];
+        return `<tr class="${id === sp.mine ? 'font-semibold text-ink' : 'text-ink-muted'}"><td class="w-6 py-0.5 text-ink-faint">${i + 1}</td><td class="py-0.5">${esc(E.teamLabel(st, id))}${po?.champion === id ? ' 👑' : ''}</td><td class="py-0.5 text-right tabular-nums">${t.w} 胜 ${t.l} 负</td></tr>`;
+      }).join('')}</tbody></table>
+      ${po ? `<p class="mt-2 text-sm text-ink-muted">季后赛：${esc(E.teamLabel(st, po.champion!))} 夺冠，${esc(E.teamLabel(st, po.runnerUp!))} 亚军。</p>` : `<p class="mt-2 text-sm text-ink-faint">常规赛还剩 ${Math.max(0, sp.schedule.length - sp.played)} 场。前四名进季后赛。</p>`}`
+    );
+  }
+
+  function worldsCard(st: GameState): string | null {
+    const W = st.worlds;
+    if (!W) return null;
+    const name = (id: string | null | undefined) => (id ? esc(E.teamLabel(st, id)) : '待定');
+    const groups = W.groups.map((g, i) => {
+      const rows = W.order ? W.order[i] : g;
+      return `<div class="min-w-[46%] flex-1"><p class="text-xs font-semibold text-ink-faint">${'ABCD'[i]} 组</p>${rows.map((id) => {
+        const t = W.tables[i][id];
+        return `<p class="flex justify-between text-sm ${id === st.team.id ? 'font-semibold text-ink' : 'text-ink-muted'}"><span>${name(id)}</span><span class="tabular-nums">${t.w}-${t.l}</span></p>`;
+      }).join('')}</div>`;
+    }).join('');
+    const ko = W.bracket
+      ? `<p class="mt-3 text-xs font-semibold text-ink-faint">淘汰赛</p>
+        <p class="text-sm text-ink-muted">八强：${W.bracket.map(name).join('、')}</p>
+        ${W.qfWinners ? `<p class="text-sm text-ink-muted">四强：${W.qfWinners.map(name).join('、')}</p>` : ''}
+        ${W.sfWinners ? `<p class="text-sm text-ink-muted">决赛：${name(W.sfWinners[0])} 对 ${name(W.sfWinners[1])}</p>` : ''}
+        ${W.champion ? `<p class="text-sm font-semibold text-ink">冠军：${name(W.champion)}</p>` : ''}`
+      : W.seeds.length
+        ? `<p class="mt-3 text-sm text-ink-muted">直接进八强：${W.seeds.map(name).join('、')}</p>`
+        : '';
+    return card(`${E.cur(st).id} 全球总决赛`, `<div class="flex flex-wrap gap-4">${groups}</div>${ko}`);
+  }
+
+  const BTN = 'rounded-lg border border-edge px-3 py-1.5 text-xs font-semibold text-ink transition hover:border-violet-500/50 disabled:cursor-not-allowed disabled:opacity-50';
+
+  function attrsCard(st: GameState): string {
+    const w = POSITIONS.find((p) => p.id === st.pos)!.weights as Record<Attr, number>;
+    return card(
+      `属性 · 可用训练点 <span class="text-violet-600 dark:text-violet-400">${st.tp}</span>`,
+      `<dl class="space-y-2.5">${ATTRS.map((a) => {
+        const v = st.attrs[a.id];
+        const cost = E.pointCost(v);
+        const can = v < 99 && st.tp >= cost;
+        return `<div class="flex items-center gap-3">
+          <dt class="w-14 shrink-0 text-sm font-semibold" title="${esc(a.desc)}">${a.name}<span class="ml-1 text-[11px] font-normal text-ink-faint">${Math.round(w[a.id] * 100)}%</span></dt>
+          <dd class="min-w-0 flex-1">${bar(v, 99, 'bg-violet-500')}<p class="mt-0.5 text-[11px] text-ink-faint">${esc(a.desc)}</p></dd>
+          <button type="button" data-act="point" data-v="${a.id}" ${can ? '' : 'disabled'} title="${v >= 99 ? '已经加满' : `加 1 点要花 ${cost} 训练点`}" class="w-[4.5rem] shrink-0 rounded-lg border px-2 py-1 text-xs font-semibold transition ${can ? 'border-violet-500/60 text-violet-600 hover:bg-violet-500/10 dark:text-violet-400' : 'cursor-not-allowed border-edge text-ink-faint opacity-60'}">+1<span class="font-normal">（${cost}）</span></button>
+        </div>`;
+      }).join('')}</dl>
+      <p class="mt-3 text-xs text-ink-faint">综合实力 <b class="text-ink">${num(E.overall(st))}</b>（${E.gradeOf(E.overall(st))}）：按${posName(st.pos)}对五项的权重加权。属性越高，每一点越贵。</p>`
+    );
+  }
+
+  function traitsCard(st: GameState): string {
+    return card(
+      `词条 · ${st.traits.length}`,
+      `<ul class="space-y-2">${st.traits.map((id) => {
+        const t = TRAITS.find((x) => x.id === id);
+        return t ? `<li class="text-sm"><b class="${t.bad ? 'text-red-600 dark:text-red-400' : 'text-ink'}">${t.name}</b><span class="text-ink-muted">　${t.desc}</span></li>` : '';
+      }).join('')}</ul>`
+    );
+  }
+
+  function teamCard(st: GameState): string {
+    const win = E.isWindow(st);
+    const own = st.team.kind === 'own';
+    return card(
+      `我的战队${st.team.coord > 0 ? ` · 磨合 +${num(st.team.coord)}` : ''}`,
+      `${teamHead(st, st.team.id)}<div class="mt-1">${rosterOf(st, st.team.id).map(playerRow).join('')}</div>
+      <div class="mt-3 flex flex-wrap gap-2">
+        <button type="button" data-act="panel" data-v="teams" ${win ? '' : 'disabled'} class="${BTN}">${own ? '改名 / 申请加入其他战队' : '申请转会'}</button>
+        ${own ? `<button type="button" data-act="panel" data-v="gacha" ${win ? '' : 'disabled'} class="${BTN}">抽卡换人</button>` : ''}
+      </div>
+      ${win ? '' : '<p class="mt-2 text-xs text-ink-faint">转会期才能换队、抽卡、调整阵容。</p>'}`
+    );
+  }
+
+  function honorsCard(st: GameState): string {
+    return card(
+      `荣誉 · ${st.honors.length}`,
+      st.honors.length
+        ? `<ul class="space-y-1 text-sm text-ink-muted">${[...st.honors].reverse().map((h) => `<li><span class="text-ink-faint">${h.season}</span>　${esc(h.name)}</li>`).join('')}</ul>`
+        : '<p class="text-sm text-ink-faint">还没有荣誉。</p>'
+    );
+  }
+
+  function teamsPanel(st: GameState): string {
+    const win = E.isWindow(st);
+    const mine = st.team.kind === 'real' ? st.team.id : '';
+    const own = st.team.kind === 'own';
+    return card(
+      `转会市场 · 本赛季 ${REGIONS.find((r) => r.id === st.region)!.name} 的队伍`,
+      `<div class="space-y-3">${E.leagueIds(st).filter((id) => id !== 'own').map((id) => {
+        const it = E.interest(st, id);
+        const here = id === mine;
+        return `<div class="rounded-lg border border-edge p-3 ${here ? 'border-violet-500/60' : ''}">
+          ${teamHead(st, id)}
+          <div class="mt-1">${rosterOf(st, id).map(playerRow).join('')}</div>
+          <div class="mt-2 flex items-center justify-between gap-2">
+            <span class="text-xs ${it.ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-ink-faint'}">${here ? '你现在的战队' : it.ok ? '对你有意向' : esc(it.why)}</span>
+            ${here ? '' : `<button type="button" data-act="join" data-v="${id}" ${it.ok ? '' : 'disabled'} class="${BTN}">加入</button>`}
+          </div>
+        </div>`;
+      }).join('')}</div>
+      <div class="mt-4 rounded-lg border border-dashed border-edge p-3">
+        <p class="text-sm font-semibold text-ink">${own ? '给自己的战队改名' : '离开现在的战队，成立自己的战队'}</p>
+        <p class="mt-1 text-xs text-ink-muted">${own ? '' : '成立后可以抽卡换人，世界赛名额要靠自己的战队打出来。'}</p>
+        <div class="mt-2 flex gap-2">
+          <input id="lol-own-name" maxlength="12" placeholder="战队名" value="${own ? esc(st.team.name) : ''}" class="min-w-0 flex-1 rounded-lg border border-edge bg-page px-3 py-1.5 text-sm text-ink outline-none focus:border-violet-500" />
+          <button type="button" data-act="own" ${win ? '' : 'disabled'} class="${BTN}">${own ? '改名' : '成立战队'}</button>
+        </div>
+      </div>
+      <button type="button" data-act="panel" data-v="main" class="mt-4 text-sm text-violet-600 hover:underline dark:text-violet-400">← 返回</button>`
+    );
+  }
+
+  function gachaPanel(st: GameState): string {
+    const win = E.isWindow(st);
+    const pool = E.poolOf(st, ui.pool);
+    const tiers = E.RARITY.map((r, i) => ({ ...r, n: pool.filter((p) => E.rarityOf(p.overall) === i).length })).reverse();
+    const can = (n: number) => win && st.funds >= E.DRAW_COST * n;
+    const DRAW_BTN = 'rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-zinc-900 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50';
+    return card(
+      `抽卡 · 资金 <span class="text-amber-600 dark:text-amber-400">${st.funds}</span> · 保底进度 ${st.pity}/10`,
+      `<div class="flex flex-wrap items-center gap-2">
+        ${(['home', 'away'] as E.Pool[]).map((p) => `<button type="button" data-act="pool" data-v="${p}" class="${BTN} ${ui.pool === p ? '!border-violet-500 bg-violet-500/10' : ''}">${p === 'home' ? '本赛区' : '外援'}</button>`).join('')}
+        <span class="ml-auto text-xs text-ink-faint">非卖品抽不到 · 首发外援最多两人</span>
+      </div>
+      <p class="mt-2 text-xs text-ink-muted">卡池里现有 ${pool.length} 名选手：${tiers.map((r) => `${r.name} ${r.n}`).join(' · ')}</p>
+      <div class="mt-3 flex flex-wrap gap-2">
+        <button type="button" data-act="draw" data-v="1" ${can(1) ? '' : 'disabled'} class="${DRAW_BTN}">抽 1 次（${E.DRAW_COST}）</button>
+        <button type="button" data-act="draw" data-v="10" ${can(10) ? '' : 'disabled'} class="${DRAW_BTN}">抽 10 次（${E.DRAW_COST * 10}）</button>
+      </div>
+      ${
+        ui.last.length
+          ? `<div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">${ui.last.map((p) => `<div class="rounded-lg border p-2 text-center ${RARITY_CLS[E.rarityOf(p.overall)]}"><p class="text-[11px]">${E.RARITY[E.rarityOf(p.overall)].name}</p><p class="truncate font-semibold" title="${esc(p.id)}">${esc(p.id)}</p><p class="text-[11px] opacity-80">${posName(p.pos)} · ${p.overall}</p></div>`).join('')}</div>`
+          : ''
+      }
+      <p class="mt-4 text-sm font-semibold text-ink">替补席（${st.bench.length}）</p>
+      ${
+        st.bench.length
+          ? `<div class="mt-1">${[...st.bench].sort((a, b) => E.findPro(st, b)!.overall - E.findPro(st, a)!.overall).map((id) => {
+              const p = E.findPro(st, id)!;
+              return `<div class="flex items-center justify-between gap-2 py-1 text-sm text-ink-muted"><span class="flex min-w-0 items-center gap-1.5"><span class="w-8 shrink-0 text-xs text-ink-faint">${posName(p.pos)}</span><span class="truncate">${esc(p.id)} <span class="text-xs text-ink-faint">${esc(E.cur(st).byId[p.team]?.zh || E.cur(st).byId[p.team]?.name || '')}</span></span></span><span class="flex shrink-0 items-center gap-1.5">${attrBars(p)}<b class="w-7 text-right text-ink tabular-nums">${p.overall}</b><button type="button" data-act="field" data-v="${esc(p.id)}" ${win ? '' : 'disabled'} class="${BTN}">放进首发</button><button type="button" data-act="release" data-v="${esc(p.id)}" ${win ? '' : 'disabled'} class="${BTN}">放走</button></span></div>`;
+            }).join('')}</div>`
+          : '<p class="mt-1 text-xs text-ink-faint">替补席是空的。抽到的选手会先放在这里。</p>'
+      }
+      <p class="mt-4 text-sm font-semibold text-ink">首发阵容</p>
+      <div class="mt-1">${POS_ORDER.map((pos) => {
+        const id = st.team.members[pos];
+        return `<div class="flex items-center justify-between gap-2 py-1 text-sm text-ink-muted"><span class="w-8 shrink-0 text-xs text-ink-faint">${posName(pos)}</span><span class="min-w-0 flex-1 truncate">${pos === st.pos ? `<b class="text-ink">${esc(st.name)}（你）</b>` : id ? `${esc(id)} <button type="button" data-act="bench" data-v="${pos}" ${win ? '' : 'disabled'} class="text-xs text-violet-600 hover:underline disabled:text-ink-faint disabled:no-underline dark:text-violet-400">换下</button>` : '青训选手'}</span></div>`;
+      }).join('')}</div>
+      <p class="mt-3 text-xs text-ink-faint">每抽 ${E.DRAW_COST} 资金。连续 10 抽没出核心以上，下一抽必出。抽到的选手会离开原来的队伍。</p>
+      <button type="button" data-act="panel" data-v="main" class="mt-3 text-sm text-violet-600 hover:underline dark:text-violet-400">← 返回</button>`
+    );
+  }
+
+  const stat = (label: string, body: string, foot: string) =>
+    `<div class="rounded-xl border border-edge bg-card p-3"><p class="text-xs text-ink-faint">${label}</p><div class="mt-1">${body}</div>${foot ? `<p class="mt-1 text-[11px] text-ink-faint">${foot}</p>` : ''}</div>`;
+
+  const noticeBlock = () => (ui.notice ? `<p class="mb-3 rounded-lg border border-amber-400/60 bg-amber-400/10 px-3 py-2 text-sm text-ink">${esc(ui.notice)}</p>` : '');
+
+  function mainScreen(st: GameState): string {
+    const t = E.tierOf(st);
+    return `
+      <div class="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <p class="text-lg font-extrabold">${E.cur(st).id} <span class="text-ink-faint">·</span> ${E.cur(st).year} 年</p>
+        <p class="text-sm text-ink-muted">${esc(st.name)} · ${REGIONS.find((r) => r.id === st.region)!.name} · ${posName(st.pos)} · ${st.age} 岁</p>
+      </div>
+      ${noticeBlock()}
+      <div class="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        ${stat(`段位 ${t.name}`, bar(st.rank - t.min, t.span, 'bg-sky-500'), `${st.rank} / ${t.max} 分`)}
+        ${stat('综合实力', `<p class="text-2xl font-extrabold tabular-nums">${num(E.overall(st))}</p>`, `${E.gradeOf(E.overall(st))} 级`)}
+        ${stat(`体力 ${Math.round(st.stamina)} / ${st.maxStamina}`, bar(st.stamina, st.maxStamina, st.stamina < 30 ? 'bg-red-500' : 'bg-emerald-500'), st.injury > 0 ? `带伤，休战 ${st.injury} 天` : '')}
+        ${stat('训练点', `<p class="text-2xl font-extrabold tabular-nums">${st.tp}</p>`, '用来加点')}
+        ${stat('资金', `<p class="text-2xl font-extrabold tabular-nums">${st.funds}</p>`, '用来抽卡')}
+      </div>
+      <div class="mt-3 grid gap-3 lg:grid-cols-5">
+        <div class="space-y-3 lg:col-span-3">${todayCard(st)}${leagueCard(st) ?? ''}${worldsCard(st) ?? ''}</div>
+        <div class="space-y-3 lg:col-span-2">${attrsCard(st)}${teamCard(st)}${traitsCard(st)}${honorsCard(st)}</div>
+      </div>
+      <section class="mt-3 rounded-xl border border-edge bg-card p-4">
+        <h3 class="mb-2 text-sm font-bold uppercase tracking-wide text-ink-faint">生涯记录</h3>
+        <ol class="space-y-1.5">${st.log.slice(0, 40).map((l) => `<li class="text-sm leading-relaxed"><span class="mr-2 text-xs text-ink-faint">${esc(l.date)}</span><span class="${LOG_CLS[l.kind]}">${esc(l.text)}</span></li>`).join('')}</ol>
+      </section>
+      <p class="mt-3 text-right"><button type="button" data-act="restart" class="text-xs text-ink-faint hover:text-red-600 hover:underline dark:hover:text-red-400">放弃这局，重新开始</button></p>`;
+  }
+
+  function endScreen(st: GameState): string {
+    const c = E.careerSummary(st);
+    return card(
+      '生涯结束',
+      `<p class="text-2xl font-extrabold">${esc(st.name)}，${c.years} 个赛季，${c.age} 岁</p>
+      <p class="mt-2 text-ink-muted">最终实力 <b class="text-ink">${c.overall}</b>（${c.grade}）· 比赛 ${c.record} · 系列赛 ${c.seriesRecord} · MVP ${c.mvp} 次</p>
+      <p class="mt-4 text-sm font-semibold text-ink">拿到的冠军（${c.titles.length}）</p>
+      ${c.titles.length ? `<ul class="mt-1 space-y-1 text-sm text-ink-muted">${[...c.titles].reverse().map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : '<p class="mt-1 text-sm text-ink-faint">一个冠军都没拿到。再来一次？</p>'}
+      <table class="mt-4 w-full text-sm">
+        <thead><tr class="text-left text-xs text-ink-faint"><th class="py-1 font-normal">赛季</th><th class="py-1 font-normal">战队</th><th class="py-1 font-normal">春季赛</th><th class="py-1 font-normal">夏季赛</th><th class="py-1 font-normal">世界赛</th></tr></thead>
+        <tbody>${st.history.map((h) => `<tr class="border-t border-edge"><td class="py-1">${h.id}</td><td class="py-1">${esc(h.team)}</td><td class="py-1">${esc(h.spring)}</td><td class="py-1">${esc(h.summer)}</td><td class="py-1">${esc(h.worlds)}</td></tr>`).join('')}</tbody>
+      </table>
+      <button type="button" data-act="restart" class="mt-5 rounded-xl bg-violet-600 px-5 py-2.5 font-semibold text-white transition hover:bg-violet-500">再来一次</button>`
+    );
+  }
+
+  function render(): void {
+    if (!s) root.innerHTML = createScreen();
+    else if (s.screen === 'careerEnd') root.innerHTML = `<div class="mx-auto max-w-2xl">${endScreen(s)}</div>`;
+    else if (ui.view !== 'main') root.innerHTML = `<div class="mx-auto max-w-3xl">${noticeBlock()}${ui.view === 'teams' ? teamsPanel(s) : gachaPanel(s)}</div>`;
+    else root.innerHTML = mainScreen(s);
+  }
+
+  // ---------- 事件 ----------
+  root.addEventListener('input', (e: Event) => {
+    const el = e.target as HTMLInputElement;
+    if (el.id === 'lol-name') ui.name = el.value;
+    if (el.id === 'lol-team') ui.team = el.value;
+  });
+
+  root.addEventListener('click', (e: Event) => {
+    const target = e.target as HTMLElement;
+    const option = target.closest<HTMLElement>('[data-pick]');
+    if (option) {
+      const key = option.dataset.pick as 'region' | 'pos' | 'trait';
+      ui.pick[key] = option.dataset.v as never;
+      render();
+      return;
+    }
+    const el = target.closest<HTMLElement>('[data-act]');
+    if (!el || el.hasAttribute('disabled')) return;
+    const act = el.dataset.act!;
+    const v = el.dataset.v ?? '';
+    ui.notice = '';
+    if (act === 'new') s = E.createGame({ name: ui.name, region: ui.pick.region, pos: ui.pick.pos, trait: ui.pick.trait, teamName: ui.team });
+    else if (act === 'resume') s = E.load();
+    else if (act === 'restart') {
+      if (!window.confirm('确定要放弃现在的生涯、重新开始吗？')) return;
+      E.clearSave();
+      s = null;
+      ui.view = 'main';
+      ui.last = [];
+    } else if (s) {
+      switch (act) {
+        case 'act':
+          E.act(s, v as E.Action, Number(el.dataset.n ?? 1));
+          break;
+        case 'restInjury':
+          E.restInjury(s);
+          break;
+        case 'point':
+          E.addPoint(s, v as Attr);
+          break;
+        case 'play':
+          E.playPending(s);
+          break;
+        case 'continue':
+          E.continueAfterResult(s);
+          break;
+        case 'seasonGo':
+          E.closeSeasonStart(s);
+          break;
+        case 'seasonTeams':
+          E.closeSeasonStart(s);
+          ui.view = 'teams';
+          break;
+        case 'panel':
+          ui.view = v as Ui['view'];
+          if (ui.view === 'gacha') ui.last = [];
+          break;
+        case 'join':
+          if (E.joinTeam(s, v)) ui.view = 'main';
+          else ui.notice = E.interest(s, v).why;
+          break;
+        case 'own': {
+          const name = (document.getElementById('lol-own-name') as HTMLInputElement | null)?.value ?? '';
+          if (!E.makeOwnTeam(s, name)) ui.notice = E.isWindow(s) ? '请先给战队起个名字' : '只能在转会期成立战队';
+          break;
+        }
+        case 'pool':
+          ui.pool = v as E.Pool;
+          ui.last = [];
+          break;
+        case 'draw':
+          ui.last = E.draw(s, ui.pool, Number(v));
+          if (!ui.last.length) ui.notice = E.isWindow(s) ? (s.funds < E.DRAW_COST * Number(v) ? '资金不够' : '卡池里已经没有可抽的选手了') : '只能在转会期抽卡';
+          break;
+        case 'field': {
+          const p = E.findPro(s, v);
+          const r = p ? E.setMember(s, p.pos, v) : { ok: false, why: '找不到这名选手' };
+          if (!r.ok) ui.notice = r.why;
+          break;
+        }
+        case 'bench':
+          E.setMember(s, v as Position, null);
+          break;
+        case 'release':
+          E.release(s, v);
+          break;
+      }
+    }
+    if (s) E.save(s);
+    render();
+  });
+
+  // 仅开发环境：方便在浏览器里调试
+  if (import.meta.env.DEV) {
+    const errors: string[] = [];
+    window.addEventListener('error', (e) => errors.push(String(e.message)));
+    (window as unknown as { __lol: unknown }).__lol = { get: () => s, set: (x: GameState) => { s = x; render(); }, refresh: () => render(), ui, E, errors };
+  }
+
+  render();
+</script>
