@@ -1,0 +1,7 @@
+---
+import PlayPage from '../../components/pages/PlayPage.astro';
+import { localeOnlyPaths } from '../../i18n/paths';
+
+export const getStaticPaths = localeOnlyPaths;
+---
+<PlayPage locale={Astro.props.locale} />

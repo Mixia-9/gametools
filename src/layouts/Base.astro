@@ -7,11 +7,13 @@ interface Props {
   title?: string;
   description?: string;
   locale?: Locale;
+  /** 不让搜索引擎收录这一页（例如游戏页） */
+  noindex?: boolean;
 }
 
 const SITE = 'https://www.gametools.info';
 
-const { locale = 'en', title = t(locale, 'title.default'), description = t(locale, 'hero.sub') } = Astro.props;
+const { locale = 'en', title = t(locale, 'title.default'), description = t(locale, 'hero.sub'), noindex = false } = Astro.props;
 
 const canonicalPath = stripLocale(Astro.url.pathname);
 ---
@@ -23,6 +25,7 @@ const canonicalPath = stripLocale(Astro.url.pathname);
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content={description} />
     <meta name="generator" content={Astro.generator} />
+    {noindex && <meta name="robots" content="noindex" />}
     <link rel="canonical" href={SITE + localePath(locale, canonicalPath)} />
     {locales.map((l) => <link rel="alternate" hreflang={htmlLang[l]} href={SITE + localePath(l, canonicalPath)} />)}
     <link rel="alternate" hreflang="x-default" href={SITE + localePath('en', canonicalPath)} />
@@ -46,6 +49,7 @@ const canonicalPath = stripLocale(Astro.url.pathname);
         <div class="flex items-center gap-4">
           <nav class="hidden items-center gap-4 text-sm text-ink-muted md:flex">
             <a href={localePath(locale, '/#categories')} class="hover:text-ink">{t(locale, 'nav.categories')}</a>
+            <a href={localePath(locale, '/play')} class="hover:text-ink">🎮 {t(locale, 'nav.play')}</a>
             <a href={localePath(locale, '/submit')} class="hover:text-ink">{t(locale, 'nav.submit')}</a>
             <a href={localePath(locale, '/about')} class="hover:text-ink">{t(locale, 'nav.about')}</a>
           </nav>

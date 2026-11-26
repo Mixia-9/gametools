@@ -9,7 +9,8 @@ export default defineConfig({
     locales: ['en', 'zh-CN', 'zh-TW', 'ja'],
     routing: { prefixDefaultLocale: false },
   },
-  integrations: [sitemap()],
+  // 游戏页与“找工具”无关，不放进站点地图
+  integrations: [sitemap({ filter: (page) => !/\/play\/?$/.test(page) })],
   vite: {
     plugins: [tailwindcss()],
   },

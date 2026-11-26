@@ -60,6 +60,21 @@ const gameCounts = Object.fromEntries(
     </p>
   </section>
 
+  <!-- 自制小游戏入口 -->
+  <section class="mt-12">
+    <a
+      href={localePath(locale, '/play')}
+      class="flex flex-col items-center gap-4 rounded-2xl border border-edge bg-card p-8 text-center transition hover:border-violet-500/50 hover:bg-card-hover sm:flex-row sm:text-left"
+    >
+      <span class="text-4xl" aria-hidden="true">🧱</span>
+      <span class="flex-1">
+        <strong>{t(locale, 'play.card.title')}</strong>
+        <span class="block text-sm text-ink-muted">{t(locale, 'play.card.text')}</span>
+      </span>
+      <span class="shrink-0 rounded-xl bg-violet-600 px-5 py-2.5 font-semibold text-white">{t(locale, 'play.card.cta')} →</span>
+    </a>
+  </section>
+
   <script>
     import { setupGameFilter, applyGameFilterFromUrl, isGameOnly } from '../../scripts/toolFilter';
 

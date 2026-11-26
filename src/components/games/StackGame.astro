@@ -1,0 +1,465 @@
+---
+import { t, type Locale } from '../../i18n/ui';
+
+interface Props {
+  locale?: Locale;
+}
+
+const { locale = 'en' } = Astro.props;
+
+// 客户端脚本要用的文案
+const strings = {
+  title: t(locale, 'play.title'),
+  start: t(locale, 'play.start'),
+  hint: t(locale, 'play.hint'),
+  best: t(locale, 'play.best'),
+  perfect: t(locale, 'play.perfect'),
+  combo: t(locale, 'play.combo'),
+  over: t(locale, 'play.over'),
+  record: t(locale, 'play.record'),
+  again: t(locale, 'play.again'),
+};
+---
+
+<div id="stack" class="relative select-none overflow-hidden rounded-2xl border border-edge bg-[#14111f]">
+  <canvas
+    id="stack-canvas"
+    role="img"
+    aria-label={strings.start}
+    class="block h-[62vh] max-h-[640px] min-h-[380px] w-full touch-none"
+  ></canvas>
+
+  <!-- 计分 -->
+  <div class="pointer-events-none absolute inset-x-0 top-4 flex flex-col items-center text-white [text-shadow:0_2px_10px_rgb(0_0_0/0.5)]">
+    <span id="stack-score" class="text-5xl font-extrabold leading-none tabular-nums">0</span>
+    <span id="stack-best" class="mt-1 text-xs text-white/75"></span>
+  </div>
+  <p
+    id="stack-flash"
+    class="pointer-events-none absolute inset-x-0 top-[38%] text-center text-lg font-bold text-white opacity-0 transition-opacity duration-500 [text-shadow:0_2px_10px_rgb(0_0_0/0.5)]"
+  >
+  </p>
+
+  <!-- 开始 / 结束面板 -->
+  <div
+    id="stack-panel"
+    class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/40 px-6 text-center text-white"
+  >
+    <p id="stack-kicker" class="text-xs font-semibold uppercase tracking-widest text-white/75"></p>
+    <p id="stack-title" class="text-4xl font-extrabold"></p>
+    <p id="stack-text" class="max-w-sm whitespace-pre-line text-sm leading-relaxed text-white/85"></p>
+    <button
+      id="stack-again"
+      type="button"
+      class="pointer-events-auto mt-2 hidden rounded-xl bg-violet-600 px-5 py-2.5 font-semibold text-white transition hover:bg-violet-500"
+    >
+    </button>
+  </div>
+
+  <button
+    id="stack-sound"
+    type="button"
+    aria-pressed="true"
+    aria-label={t(locale, 'play.sound')}
+    class="absolute left-3 top-3 rounded-lg border border-white/20 bg-black/30 px-2 py-1.5 text-sm text-white transition hover:bg-black/50"
+  >
+  </button>
+
+  <script type="application/json" id="stack-i18n" set:html={JSON.stringify(strings)} />
+</div>
+
+<script>
+  import { resolveDrop } from '../../games/stackLogic';
+
+  const canvas = document.getElementById('stack-canvas') as HTMLCanvasElement | null;
+  const ctx = canvas?.getContext('2d') ?? null;
+  if (canvas && ctx) {
+    const strings = JSON.parse(document.getElementById('stack-i18n')?.textContent ?? '{}');
+    const scoreEl = document.getElementById('stack-score')!;
+    const bestEl = document.getElementById('stack-best')!;
+    const flashEl = document.getElementById('stack-flash')!;
+    const panel = document.getElementById('stack-panel')!;
+    const kickerEl = document.getElementById('stack-kicker')!;
+    const titleEl = document.getElementById('stack-title')!;
+    const textEl = document.getElementById('stack-text')!;
+    const againBtn = document.getElementById('stack-again') as HTMLButtonElement;
+    const soundBtn = document.getElementById('stack-sound') as HTMLButtonElement;
+
+    type Axis = 'x' | 'z';
+    type Pt = [number, number];
+    /** 一个方块：ox/oz 是中心相对塔中心沿两条轴的偏移，sx/sz 是两条轴上的尺寸（1 = 初始大小） */
+    interface Box {
+      ox: number;
+      oz: number;
+      sx: number;
+      sz: number;
+      hue: number;
+    }
+    /** 被切掉（或没搭上）后往下掉的方块 */
+    interface Piece {
+      box: Box;
+      ax: Axis;
+      dir: number;
+      y: number;
+      vy: number;
+    }
+    /** 完美对齐时从方块顶面扩散出去的白色描边 */
+    interface Ring {
+      box: Box;
+      level: number;
+      t: number;
+    }
+
+    const AMP = 1.35; // 方块来回移动的幅度
+    const BEST_KEY = 'gametools-stack-best';
+    const SOUND_KEY = 'gametools-sound';
+
+    let W = 0;
+    let H = 0;
+    let a = 0; // 方块半宽（像素）
+    let h = 0; // 方块厚度（像素）
+    let layers: Box[] = [];
+    let pieces: Piece[] = [];
+    let rings: Ring[] = [];
+    let phase = Math.PI / 2; // 方块来回移动的相位
+    let cam = 0; // 镜头已经跟上的层数
+    let streak = 0; // 连续完美对齐的次数
+    let flashT = 0; // 刚放下的方块顶面的闪光强度
+    let hueBase = Math.random() * 360;
+    let hueShown = hueBase;
+    let state: 'idle' | 'playing' | 'over' = 'idle';
+    let overAt = 0;
+    let best = Number(localStorage.getItem(BEST_KEY) ?? 0);
+    let soundOn = localStorage.getItem(SOUND_KEY) !== 'off';
+    let flashTimer = 0;
+    let resultTimer = 0;
+    let audio: AudioContext | null = null;
+
+    const top = () => layers[layers.length - 1];
+    const level = () => layers.length; // 正在放的方块是第几层
+    const axis = (): Axis => (level() % 2 === 1 ? 'x' : 'z');
+    const speed = () => Math.min(3.4, 1.9 + level() * 0.03);
+    const score = () => Math.max(0, layers.length - 1);
+    const hueAt = (n: number) => hueBase + n * 8;
+    // 第 n 层顶面中心的纵坐标
+    const yTop = (n: number) => H * 0.6 - (n - cam) * h;
+
+    function resize() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      W = canvas.clientWidth;
+      H = canvas.clientHeight;
+      canvas.width = Math.round(W * dpr);
+      canvas.height = Math.round(H * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // 最右端时方块的角不超出画布：a * (1 + AMP) 不超过半个画布宽
+      a = Math.min(W * 0.21, Math.max(70, H * 0.27));
+      h = a * 0.26;
+    }
+
+    function moving(): Box {
+      const t = top();
+      const m = AMP * Math.sin(phase);
+      const hue = hueAt(level());
+      return axis() === 'x'
+        ? { ox: m, oz: t.oz, sx: t.sx, sz: t.sz, hue }
+        : { ox: t.ox, oz: m, sx: t.sx, sz: t.sz, hue };
+    }
+
+    // ---------- 音效：用振荡器现场合成，不加载任何音频文件 ----------
+    function wakeAudio() {
+      if (!soundOn) return;
+      try {
+        audio ??= new AudioContext();
+        if (audio.state === 'suspended') void audio.resume().catch(() => {});
+      } catch {
+        audio = null;
+      }
+    }
+
+    function tone(from: number, to: number, dur: number, type: OscillatorType, gain: number, delay = 0) {
+      if (!soundOn || !audio) return;
+      const t0 = audio.currentTime + delay;
+      const osc = audio.createOscillator();
+      const g = audio.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(from, t0);
+      osc.frequency.exponentialRampToValueAtTime(to, t0 + dur);
+      g.gain.setValueAtTime(gain, t0);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      osc.connect(g).connect(audio.destination);
+      osc.start(t0);
+      osc.stop(t0 + dur + 0.02);
+    }
+
+    function renderSound() {
+      soundBtn.textContent = soundOn ? '🔊' : '🔇';
+      soundBtn.setAttribute('aria-pressed', String(soundOn));
+    }
+
+    soundBtn.addEventListener('click', () => {
+      soundOn = !soundOn;
+      localStorage.setItem(SOUND_KEY, soundOn ? 'on' : 'off');
+      renderSound();
+      wakeAudio();
+    });
+
+    // ---------- 界面文字 ----------
+    function renderHud() {
+      scoreEl.textContent = String(score());
+      bestEl.textContent = best > 0 ? `${strings.best} ${best}` : '';
+    }
+
+    function showFlash(text: string) {
+      flashEl.textContent = text;
+      flashEl.style.opacity = '1';
+      window.clearTimeout(flashTimer);
+      flashTimer = window.setTimeout(() => {
+        flashEl.style.opacity = '0';
+      }, 700);
+    }
+
+    function showPanel(kicker: string, title: string, text: string, again: boolean) {
+      kickerEl.textContent = kicker;
+      titleEl.textContent = title;
+      textEl.textContent = text;
+      againBtn.textContent = strings.again;
+      againBtn.classList.toggle('hidden', !again);
+      panel.classList.remove('hidden');
+    }
+
+    // ---------- 一局的流程 ----------
+    function start() {
+      window.clearTimeout(resultTimer);
+      hueBase = Math.random() * 360;
+      layers = [{ ox: 0, oz: 0, sx: 1, sz: 1, hue: hueAt(0) }];
+      pieces = [];
+      rings = [];
+      phase = Math.PI / 2;
+      streak = 0;
+      cam = 0;
+      flashT = 0;
+      state = 'playing';
+      panel.classList.add('hidden');
+      renderHud();
+    }
+
+    function drop() {
+      const t = top();
+      const ax = axis();
+      const m = AMP * Math.sin(phase);
+      const size = ax === 'x' ? t.sx : t.sz;
+      const center = ax === 'x' ? t.ox : t.oz;
+      const r = resolveDrop(size, m - center);
+      const hue = hueAt(level());
+      // 沿移动轴生成一个方块：o 是它在这条轴上的中心，s 是它在这条轴上的尺寸
+      const along = (o: number, s: number): Box =>
+        ax === 'x' ? { ox: o, oz: t.oz, sx: s, sz: t.sz, hue } : { ox: t.ox, oz: o, sx: t.sx, sz: s, hue };
+
+      if (r.size <= 0) {
+        // 完全没搭上：整个方块掉下去，本局结束
+        pieces.push({ box: along(m, size), ax, dir: Math.sign(m - center) || 1, y: 0, vy: 0 });
+        return endGame();
+      }
+
+      streak = r.perfect ? streak + 1 : 0;
+      // 连续 3 次完美对齐后，方块每次再长大一点，最多回到初始大小
+      const kept = r.perfect && streak >= 3 ? Math.min(1, r.size + 0.05) : r.size;
+      const placed = along(center + r.offset, kept);
+      if (r.cut > 0) {
+        pieces.push({ box: along(placed[ax] + r.cutOffset, r.cut), ax, dir: Math.sign(r.cutOffset), y: 0, vy: 0 });
+      }
+      layers.push(placed);
+      phase = (level() % 2 === 1 ? 1 : -1) * (Math.PI / 2);
+      flashT = 1;
+
+      if (r.perfect) {
+        rings.push({ box: placed, level: layers.length - 1, t: 0 });
+        showFlash(streak >= 2 ? `${strings.perfect} ${strings.combo.replace('{n}', String(streak))}` : strings.perfect);
+        tone(740, 740, 0.09, 'sine', 0.05);
+        tone(1110, 1110, 0.14, 'sine', 0.04, 0.07);
+      } else {
+        tone(220, 110, 0.09, 'triangle', 0.07);
+      }
+      renderHud();
+    }
+
+    function endGame() {
+      state = 'over';
+      overAt = performance.now();
+      tone(200, 70, 0.35, 'sawtooth', 0.035);
+      const s = score();
+      const record = s > best;
+      if (record) {
+        best = s;
+        localStorage.setItem(BEST_KEY, String(best));
+      }
+      // 等掉下去的方块出画后再显示成绩
+      resultTimer = window.setTimeout(() => {
+        if (state !== 'over') return;
+        showPanel(strings.over, String(s), record ? strings.record : `${strings.best} ${best}`, true);
+        renderHud();
+      }, 700);
+    }
+
+    // ---------- 操作：点一下 / 按空格 ----------
+    function onTap() {
+      wakeAudio();
+      if (state === 'playing') {
+        drop();
+        return;
+      }
+      // 结束后先留一点时间看成绩，避免连点时立刻重开
+      if (state === 'over' && performance.now() - overAt < 900) return;
+      start();
+    }
+
+    canvas.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      onTap();
+    });
+    window.addEventListener('keydown', (e) => {
+      if (e.code !== 'Space' && e.code !== 'Enter') return;
+      if ((e.target as Element | null)?.closest?.('button, a, input, textarea, select')) return;
+      e.preventDefault();
+      onTap();
+    });
+    againBtn.addEventListener('click', () => {
+      wakeAudio();
+      start();
+    });
+
+    // ---------- 画面 ----------
+    function corners(b: Box, y: number) {
+      const hx = (a * b.sx) / 2;
+      const hz = (a * b.sz) / 2;
+      const cx = W / 2 + (b.ox - b.oz) * a;
+      const cy = y + ((b.ox + b.oz) * a) / 2;
+      return {
+        far: [cx - hx + hz, cy - hx / 2 - hz / 2] as Pt,
+        right: [cx + hx + hz, cy + hx / 2 - hz / 2] as Pt,
+        near: [cx + hx - hz, cy + hx / 2 + hz / 2] as Pt,
+        left: [cx - hx - hz, cy - hx / 2 + hz / 2] as Pt,
+      };
+    }
+
+    function fillPoly(pts: Pt[], color: string) {
+      ctx.beginPath();
+      pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.fill();
+    }
+
+    /** 画一个方块。y 是顶面中心的纵坐标；extra 让侧面向下延伸（用来画出塔的基座） */
+    function drawBox(b: Box, y: number, extra = 0) {
+      const c = corners(b, y);
+      const depth = h + extra;
+      fillPoly(
+        [c.right, c.near, [c.near[0], c.near[1] + depth], [c.right[0], c.right[1] + depth]],
+        `hsl(${b.hue} 62% 50%)`
+      );
+      fillPoly(
+        [c.left, c.near, [c.near[0], c.near[1] + depth], [c.left[0], c.left[1] + depth]],
+        `hsl(${b.hue} 62% 40%)`
+      );
+      fillPoly([c.far, c.right, c.near, c.left], `hsl(${b.hue} 62% 64%)`);
+      return c;
+    }
+
+    function hueDelta(from: number, to: number) {
+      let d = (to - from) % 360;
+      if (d > 180) d -= 360;
+      if (d < -180) d += 360;
+      return d;
+    }
+
+    function draw() {
+      const g = ctx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, `hsl(${hueShown} 40% 18%)`);
+      g.addColorStop(1, `hsl(${hueShown + 50} 45% 7%)`);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+
+      // 只画最上面十几层；最底下那层向下延伸到画面外，塔看起来是从底下升上来的
+      const first = Math.max(0, layers.length - 12);
+      for (let i = first; i < layers.length; i++) {
+        const y = yTop(i);
+        if (y < -h * 2) continue;
+        const c = drawBox(layers[i], y, i === first ? y : 0);
+        if (flashT > 0 && i === layers.length - 1) {
+          fillPoly([c.far, c.right, c.near, c.left], `rgba(255, 255, 255, ${flashT * 0.35})`);
+        }
+      }
+
+      for (const p of pieces) {
+        if (yTop(level()) + p.y < H + 100) drawBox(p.box, yTop(level()) + p.y);
+      }
+
+      for (const r of rings) {
+        const c = corners(r.box, yTop(r.level));
+        const cx = (c.far[0] + c.near[0]) / 2;
+        const cy = (c.far[1] + c.near[1]) / 2;
+        const k = 1 + r.t * 0.7;
+        ctx.beginPath();
+        [c.far, c.right, c.near, c.left].forEach(([x, y], i) =>
+          i ? ctx.lineTo(cx + (x - cx) * k, cy + (y - cy) * k) : ctx.moveTo(cx + (x - cx) * k, cy + (y - cy) * k)
+        );
+        ctx.closePath();
+        ctx.strokeStyle = `rgba(255, 255, 255, ${(1 - r.t) * 0.8})`;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+      }
+
+      if (state !== 'over') drawBox(moving(), yTop(level()));
+    }
+
+    /** 推进 dt 秒的动画：方块移动、镜头跟随、掉落的碎块、描边扩散 */
+    function update(dt: number) {
+      if (state !== 'over') phase += speed() * dt;
+      // 镜头让正在放的方块停在画面上方约 36% 处，不压到顶部的分数
+      cam += (Math.max(0, level() - (0.24 * H) / h) - cam) * Math.min(1, dt * 6);
+      hueShown += hueDelta(hueShown, hueAt(Math.max(0, layers.length - 1))) * Math.min(1, dt * 2);
+      if (flashT > 0) flashT = Math.max(0, flashT - dt * 6);
+
+      for (const p of pieces) {
+        p.vy += 2600 * dt;
+        p.y += p.vy * dt;
+        if (p.ax === 'x') p.box.ox += p.dir * dt;
+        else p.box.oz += p.dir * dt;
+      }
+      pieces = pieces.filter((p) => p.y < H + 200);
+      for (const r of rings) r.t += dt * 2.2;
+      rings = rings.filter((r) => r.t < 1);
+    }
+
+    let last = performance.now();
+    function frame(now: number) {
+      // 单帧最多按 33 毫秒计时：切后台再回来时方块不会瞬间跳走
+      const dt = Math.min(0.033, (now - last) / 1000);
+      last = now;
+      update(dt);
+      draw();
+      requestAnimationFrame(frame);
+    }
+
+    // ---------- 启动 ----------
+    resize();
+    window.addEventListener('resize', resize);
+    layers = [{ ox: 0, oz: 0, sx: 1, sz: 1, hue: hueAt(0) }];
+    renderHud();
+    renderSound();
+    showPanel('', strings.title, `${strings.start}\n${strings.hint}`, false);
+    requestAnimationFrame(frame);
+
+    // 仅开发环境：暴露当前状态，并允许手动推进时间后重画，方便在浏览器里调试
+    if (import.meta.env.DEV) {
+      (window as unknown as { __stack: unknown }).__stack = {
+        get: () => ({ state, phase, cam, layers: layers.map((l) => ({ ...l })), streak }),
+        tick: (seconds: number) => {
+          for (let t = 0; t < seconds; t += 1 / 120) update(1 / 120);
+          draw();
+        },
+      };
+    }
+  }
+</script>

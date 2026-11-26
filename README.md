@@ -24,12 +24,14 @@ src/
     categories.ts     # 分类的中/繁/日翻译
     paths.ts          # 静态路径生成（含多语言展开）
   components/         # ToolCard / CategoryCard / LanguageSwitcher / Comments / FocusBadge / GameFilter
-    pages/            # 5 个共享页面组件（接收 locale）
+    pages/            # 共享页面组件（接收 locale）
+    games/            # 自制小游戏（StackGame.astro：纯 canvas，无引擎）
+  games/stackLogic.ts    # 叠塔小游戏的核心计算（对齐 / 切掉 / 完美）
   scripts/toolFilter.ts  # “只看专为游戏”筛选开关：切换状态与样式，并同步到地址栏（?games=1）
   layouts/Base.astro  # 页头页脚 + SEO(hreflang/canonical) + 主题 + 语言切换
   pages/
-    index|category|tool|submit|about   # 英文路由（无前缀，默认语言）
-    [locale]/...                        # zh-CN / zh-TW / ja 路由（自动生成）
+    index|category|tool|submit|about|play   # 英文路由（无前缀，默认语言）
+    [locale]/...                             # zh-CN / zh-TW / ja 路由（自动生成）
 ```
 
 ### 多语言（i18n）
@@ -39,6 +41,15 @@ src/
 - 工具一句话简介目前各语言均为英文（品牌名+行业术语），后续可在 tools.json 加 `oneLiner_zh` 等字段扩展
 - SEO 自动输出 canonical + 5 个 hreflang；页头切换器保留当前页面路径
 - 评论（Giscus）界面语言自动跟随页面语言
+
+### 自制小游戏（/play）
+
+- **Stack Break**：一键叠塔。点击 / 按空格放下方块，对得越准留下的越多；连续 3 次完美对齐后方块会变大；没搭上即结束。
+- 纯 HTML canvas 手写，不用引擎、不加载任何资源文件；音效用振荡器现场合成，左上角可关。
+- 入口：页头导航“玩一把”+ 首页底部的卡片。最高分存在浏览器本地（`gametools-stack-best`）。
+- 游戏页与“找工具”无关：加了 `noindex`，也不放进站点地图（`astro.config.mjs` 里的 sitemap `filter`）。
+- 调参都在 `src/components/games/StackGame.astro` 顶部（移动幅度 `AMP`、速度、画面位置）和 `src/games/stackLogic.ts`（完美对齐的容差）。
+- 开发环境下页面里有 `window.__stack`（`get()` 读状态、`tick(秒)` 手动推进时间并重画），方便在浏览器里调试；正式构建会剔除。
 
 ## 如何新增一个工具
 
