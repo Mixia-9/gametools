@@ -19,13 +19,26 @@
     team: string;
     /** 战队面板里哪些队伍是展开的 */
     open: Record<string, boolean>;
+    /** 抽卡面板里选中的那张卡（替补席上的选手 ID） */
+    sel: string | null;
   };
+
+  const VIEW_KEY = 'gametools-lol-view';
+  /** 刷新页面后回到刚才所在的面板：开发时页面会自动刷新，不能把人踢回主界面 */
+  function savedView(): Ui['view'] {
+    try {
+      const v = sessionStorage.getItem(VIEW_KEY);
+      return v === 'teams' || v === 'gacha' || v === 'pick' ? v : 'main';
+    } catch {
+      return 'main';
+    }
+  }
 
   const root = document.getElementById('lol-pro') as HTMLElement;
   // 当前这局的生涯状态；null = 还在开始画面
   let s: GameState | null = E.load();
   const ui: Ui = {
-    view: 'main',
+    view: savedView(),
     pool: 'home',
     last: [],
     notice: '',
@@ -33,6 +46,7 @@
     name: '重生者',
     team: '重生战队',
     open: {},
+    sel: null,
   };
 
   const esc = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -462,12 +476,44 @@
       <button type="button" data-act="panel" data-v="main" class="mt-4 text-sm text-violet-600 hover:underline dark:text-violet-400">← 返回</button>`
     );
   }
+  /**
+   * 抽卡面板。抽到的选手都在“替补席”的卡牌墙里：一行多张，最新抽到的排在最前，之前抽到的不会被清掉。
+   * 点一张卡才展开它的详情和“放进首发 / 放走”。
+   */
   function gachaPanel(st: GameState): string {
     const win = E.isWindow(st);
     const pool = E.poolOf(st, ui.pool);
     const tiers = E.RARITY.map((r, i) => ({ ...r, n: pool.filter((p) => E.rarityOf(p.overall) === i).length })).reverse();
     const can = (n: number) => win && st.funds >= E.DRAW_COST * n;
     const DRAW_BTN = 'rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-zinc-900 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50';
+    const fresh = new Set(ui.last.map((p) => p.id));
+    // 替补席是按抽到的先后存的，倒过来就是最新的在前面
+    const cards = [...st.bench].reverse().filter((id) => E.findPro(st, id));
+    // 注意别叫 card：外面那个 card() 是生成整块面板的
+    const tile = (id: string) => {
+      const p = E.findPro(st, id)!;
+      const r = E.rarityOf(p.overall);
+      const from = E.cur(st).byId[p.team];
+      return `<button type="button" data-act="sel" data-v="${esc(id)}" aria-pressed="${ui.sel === id}" class="rounded-lg border bg-page p-2 text-center transition hover:-translate-y-0.5 ${RARITY_CLS[r]}${ui.sel === id ? ' ring-2 ring-violet-500' : ''}">
+          <p class="text-[11px] font-semibold leading-4">${E.RARITY[r].name}${fresh.has(id) ? ' · 新抽到' : ''}</p>
+          <p class="truncate text-sm font-semibold text-ink" title="${esc(id)}">${esc(id)}</p>
+          <p class="text-[11px] leading-4 text-ink-muted">${posName(p.pos)} · <b class="text-ink tabular-nums">${p.overall}</b></p>
+          <p class="truncate text-[11px] leading-4 text-ink-faint">${esc(from?.zh || from?.name || '')}</p>
+        </button>`;
+    };
+    const sel = ui.sel && st.bench.includes(ui.sel) ? E.findPro(st, ui.sel) : undefined;
+    const detail = !sel
+      ? ''
+      : `<div class="mt-2 rounded-lg border border-violet-500/50 p-3 text-sm">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <span class="min-w-0"><b class="text-ink">${esc(sel.id)}</b> <span class="text-ink-faint">【${E.RARITY[E.rarityOf(sel.overall)].name}】${posName(sel.pos)} · 来自 ${esc(E.teamLabel(st, sel.team))}</span></span>
+            <span class="flex shrink-0 items-center gap-2">${attrBars(sel)}<b class="text-ink tabular-nums">${sel.overall}</b></span>
+          </div>
+          <div class="mt-2 flex flex-wrap gap-2">
+            <button type="button" data-act="field" data-v="${esc(sel.id)}" ${win ? '' : 'disabled'} class="${BTN}">放进首发</button>
+            <button type="button" data-act="release" data-v="${esc(sel.id)}" ${win ? '' : 'disabled'} class="${BTN}">放走</button>
+          </div>
+        </div>`;
     return card(
       `抽卡 · 资金 <span class="text-amber-600 dark:text-amber-400">${st.funds}</span> · 保底进度 ${st.pity}/10`,
       `<div class="flex flex-wrap items-center gap-2">
@@ -479,20 +525,14 @@
         <button type="button" data-act="draw" data-v="1" ${can(1) ? '' : 'disabled'} class="${DRAW_BTN}">抽 1 次（${E.DRAW_COST}）</button>
         <button type="button" data-act="draw" data-v="10" ${can(10) ? '' : 'disabled'} class="${DRAW_BTN}">抽 10 次（${E.DRAW_COST * 10}）</button>
       </div>
+      ${ui.last.length ? `<p class="mt-2 text-xs leading-relaxed text-ink-muted">这一抽抽到：${ui.last.map((p) => `${esc(p.id)}（${E.RARITY[E.rarityOf(p.overall)].name}）`).join('、')}</p>` : ''}
+      <p class="mt-4 text-sm font-semibold text-ink">替补席（${cards.length}）<span class="ml-1 text-xs font-normal text-ink-faint">最新抽到的排在前面，点一张卡看详情</span></p>
       ${
-        ui.last.length
-          ? `<div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">${ui.last.map((p) => `<div class="rounded-lg border p-2 text-center ${RARITY_CLS[E.rarityOf(p.overall)]}"><p class="text-[11px]">${E.RARITY[E.rarityOf(p.overall)].name}</p><p class="truncate font-semibold" title="${esc(p.id)}">${esc(p.id)}</p><p class="text-[11px] opacity-80">${posName(p.pos)} · ${p.overall}</p></div>`).join('')}</div>`
-          : ''
+        cards.length
+          ? `<div class="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">${cards.map(tile).join('')}</div>`
+          : '<p class="mt-1 text-xs text-ink-faint">替补席是空的。抽到的选手会先放在这里，之前抽到的不会被清掉。</p>'
       }
-      <p class="mt-4 text-sm font-semibold text-ink">替补席（${st.bench.length}）</p>
-      ${
-        st.bench.length
-          ? `<div class="mt-1">${[...st.bench].sort((a, b) => E.findPro(st, b)!.overall - E.findPro(st, a)!.overall).map((id) => {
-              const p = E.findPro(st, id)!;
-              return `<div class="flex items-center justify-between gap-2 py-1 text-sm text-ink-muted"><span class="flex min-w-0 items-center gap-1.5"><span class="w-8 shrink-0 text-xs text-ink-faint">${posName(p.pos)}</span><span class="truncate">${esc(p.id)} <span class="text-xs text-ink-faint">${esc(E.cur(st).byId[p.team]?.zh || E.cur(st).byId[p.team]?.name || '')}</span></span></span><span class="flex shrink-0 items-center gap-1.5">${attrBars(p)}<b class="w-7 text-right text-ink tabular-nums">${p.overall}</b><button type="button" data-act="field" data-v="${esc(p.id)}" ${win ? '' : 'disabled'} class="${BTN}">放进首发</button><button type="button" data-act="release" data-v="${esc(p.id)}" ${win ? '' : 'disabled'} class="${BTN}">放走</button></span></div>`;
-            }).join('')}</div>`
-          : '<p class="mt-1 text-xs text-ink-faint">替补席是空的。抽到的选手会先放在这里。</p>'
-      }
+      ${detail}
       <p class="mt-4 text-sm font-semibold text-ink">首发阵容</p>
       <div class="mt-1">${POS_ORDER.map((pos) => {
         const id = st.team.members[pos];
@@ -502,7 +542,6 @@
       <button type="button" data-act="panel" data-v="main" class="mt-3 text-sm text-violet-600 hover:underline dark:text-violet-400">← 返回</button>`
     );
   }
-
   const stat = (label: string, body: string, foot: string) =>
     `<div class="rounded-xl border border-edge bg-card p-3"><p class="text-xs text-ink-faint">${label}</p><div class="mt-1">${body}</div>${foot ? `<p class="mt-1 text-[11px] text-ink-faint">${foot}</p>` : ''}</div>`;
 
@@ -551,6 +590,13 @@
   }
 
   function render(): void {
+    // 选词条的面板在没有可选词条时就回到主界面；再把当前所在的面板记下来，刷新页面后还回到这里
+    if (s && ui.view === 'pick' && s.traitPicks <= 0) ui.view = 'main';
+    try {
+      sessionStorage.setItem(VIEW_KEY, ui.view);
+    } catch {
+      /* 存不了就算了 */
+    }
     if (!s) root.innerHTML = createScreen();
     else if (s.screen === 'careerEnd') root.innerHTML = `<div class="mx-auto max-w-2xl">${endScreen(s)}</div>`;
     else if (ui.view !== 'main') root.innerHTML = `<div class="mx-auto max-w-3xl">${noticeBlock()}${ui.view === 'teams' ? teamsPanel(s) : ui.view === 'pick' ? pickPanel(s) : gachaPanel(s)}</div>`;
@@ -587,6 +633,7 @@
       ui.view = 'main';
       ui.last = [];
       ui.open = {};
+      ui.sel = null;
     } else if (s) {
       switch (act) {
         case 'act':
@@ -627,7 +674,6 @@
           break;
         case 'panel':
           ui.view = v as Ui['view'];
-          if (ui.view === 'gacha') ui.last = [];
           break;
         case 'toggle':
           ui.open[v] = !ui.open[v];
@@ -649,16 +695,22 @@
         }
         case 'pool':
           ui.pool = v as E.Pool;
-          ui.last = [];
           break;
-        case 'draw':
+        case 'draw': {
+          // 抽到的选手进替补席（卡牌墙），之前抽到的都还在；这里只记下“这一抽”抽到了谁
           ui.last = E.draw(s, ui.pool, Number(v));
           if (!ui.last.length) ui.notice = E.isWindow(s) ? (s.funds < E.DRAW_COST * Number(v) ? '资金不够' : '卡池里已经没有可抽的选手了') : '只能在转会期抽卡';
+          else ui.sel = [...ui.last].sort((a, b) => b.overall - a.overall)[0].id;
+          break;
+        }
+        case 'sel':
+          ui.sel = ui.sel === v ? null : v;
           break;
         case 'field': {
           const p = E.findPro(s, v);
           const r = p ? E.setMember(s, p.pos, v) : { ok: false, why: '找不到这名选手' };
           if (!r.ok) ui.notice = r.why;
+          else ui.sel = null;
           break;
         }
         case 'bench':
@@ -666,6 +718,7 @@
           break;
         case 'release':
           E.release(s, v);
+          ui.sel = null;
           break;
       }
     }
