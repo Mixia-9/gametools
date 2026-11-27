@@ -1,11 +1,38 @@
 /**
- * 比赛模拟：一场/一个系列赛的胜负，以及自己每一局的数据和播报。
+ * 比赛模拟：赛前的 BP，一场/一个系列赛的胜负，以及自己每一局的数据和播报。
  */
-import { championsFor, type Position } from './data';
-import { clamp, cur, gauss, has, overall, ri, rnd, teamRating, type GameLine, type GameState, type Pending, type SeriesResult } from './core';
+import { POS_ORDER, championsFor, type Position } from './data';
+import { clamp, cur, gauss, has, overall, ri, rnd, teamRating, type Bp, type BpSide, type GameLine, type GameState, type Pending, type SeriesResult } from './core';
 
 /** 实力差换算成胜率：差 10 点约 60%，差 20 点约 79%（差距不大时爆冷不少见） */
 export const winProb = (ra: number, rb: number) => 1 / (1 + Math.pow(10, -(ra - rb) / 34));
+
+/**
+ * 一局的 BP：双方各禁用 3 个（S3–S5 的规则），再按位置各选 5 个。
+ * 英雄都来自本赛季的英雄池；禁用的不会再被选出，两边也不会选出同一个英雄。
+ */
+export function makeBp(s: GameState, blue: 'self' | 'opp'): Bp {
+  const byPos = Object.fromEntries(POS_ORDER.map((p) => [p, championsFor(cur(s).year, p)])) as Record<Position, string[]>;
+  const all = [...new Set(POS_ORDER.flatMap((p) => byPos[p]))];
+  const used = new Set<string>();
+  // 从列表里挑一个还没被禁用、没被选走的；万一都用过了（现在的英雄池不会）就允许重复，免得卡死
+  const take = (list: string[]): string => {
+    const free = list.filter((c) => !used.has(c));
+    const pool = free.length ? free : list;
+    const c = pool[ri(s, 0, pool.length - 1)];
+    used.add(c);
+    return c;
+  };
+  const side = (): BpSide => ({ bans: [take(all), take(all), take(all)], picks: POS_ORDER.map((p) => take(byPos[p])) });
+  return { blue, self: side(), opp: side() };
+}
+
+/** 第 1 局的赛前 BP：还没做的话现在做，并记在这场比赛上（刷新页面也不会变） */
+export function preMatch(s: GameState): Bp | null {
+  if (!s.pending) return null;
+  s.pending.bp ??= makeBp(s, rnd(s) < 0.5 ? 'self' : 'opp');
+  return s.pending.bp;
+}
 
 /** 电脑之间打一个系列赛，返回 [a 胜场, b 胜场] */
 export function aiSeries(s: GameState, ra: number, rb: number, bo: 1 | 3 | 5): [number, number] {
@@ -95,7 +122,7 @@ const LINES: Lines = {
   },
 };
 
-function gameLine(s: GameState, win: boolean, oppRating: number): GameLine {
+function gameLine(s: GameState, win: boolean, oppRating: number, bp: Bp): GameLine {
   const R = overall(s);
   // 本场表现：实力 + 随机波动 + 体力状态
   const perf = R + gauss(s, 0, 6) + (s.stamina - 60) / 15 + gauss(s, 0, 3);
@@ -116,9 +143,8 @@ function gameLine(s: GameState, win: boolean, oppRating: number): GameLine {
   const score = clamp(5.6 + 3.4 * (Math.sqrt(Math.max(rel, 0.05)) - 1) + (win ? 1.0 : -0.6) + (R - oppRating) * 0.03, 3, 10);
   const tier: Tier = score >= 8 ? 'hi' : score >= 6 ? 'mid' : 'lo';
   const list = LINES[s.pos][win ? 'win' : 'lose'][tier];
-  // 只用当前赛季之前上线的英雄
-  const champs = championsFor(cur(s).year, s.pos);
-  const champ = champs[ri(s, 0, champs.length - 1)];
+  // 你这局用的英雄就是 BP 里自己位置选出的那个
+  const champ = bp.self.picks[POS_ORDER.indexOf(s.pos)];
   return {
     win,
     k,
@@ -129,6 +155,7 @@ function gameLine(s: GameState, win: boolean, oppRating: number): GameLine {
     mvp: win && score >= 8.6,
     note: list[ri(s, 0, list.length - 1)].replace('{c}', champ),
     dur: ri(s, 28, 52),
+    bp,
   };
 }
 
@@ -140,7 +167,10 @@ export function playSeries(s: GameState, m: Pending): SeriesResult {
   const games: GameLine[] = [];
   let win = 0;
   let lose = 0;
+  // 第 1 局的 BP 开打前就列出来了；后面的局打完上一局才做，蓝色方每局轮换
+  let bp = m.bp ?? makeBp(s, 'self');
   while (win < need && lose < need) {
+    if (games.length) bp = makeBp(s, bp.blue === 'self' ? 'opp' : 'self');
     const deciding = m.elim && win === need - 1 && lose === need - 1;
     // 状态：体力越差越不稳；带伤上阵再打折扣
     let p = winProb(selfRating + (s.stamina - 60) / 15 - (s.injury > 0 ? 5 : 0), oppRating);
@@ -150,7 +180,7 @@ export function playSeries(s: GameState, m: Pending): SeriesResult {
       if (deciding && has(s, 'clutch')) p += 0.12;
     }
     const won = rnd(s) < clamp(p, 0.05, 0.95);
-    games.push(gameLine(s, won, oppRating));
+    games.push(gameLine(s, won, oppRating, bp));
     s.stamina = Math.max(0, s.stamina - 6);
     if (won) win++;
     else lose++;

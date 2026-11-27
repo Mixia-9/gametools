@@ -1,4 +1,4 @@
-// 「重生之我是英雄联盟职业选手」规则测试：数据完整性、非卖品、外援上限、世界赛名单与赛制。
+// 「重生之我是英雄联盟职业选手」规则测试：数据完整性、非卖品、外援上限、英雄与赛季、赛前 BP、世界赛名单与赛制。
 // 用法：node scripts/test-lol.mjs
 import { createServer } from 'vite';
 import { fileURLToPath } from 'node:url';
@@ -52,7 +52,7 @@ for (const sn of seasons) {
 
 console.log('\n[赛区]');
 const regions = E.availableRegions();
-check('目前只有 LPL 可以选（其他赛区联赛名单没核实）', regions.length === 1 && regions[0] === 'LPL', regions.join(','));
+check('目前只有 LPL 可以选（其他赛区不模拟联赛，照当年真实名单进世界赛）', regions.length === 1 && regions[0] === 'LPL', regions.join(','));
 
 function game(pos = 'mid', season = 0) {
   const s = E.createGame({ name: '测试', region: 'LPL', pos, trait: 'genius', teamName: '测试队', seed: 7 });
@@ -168,6 +168,128 @@ console.log('\n[英雄与赛季]');
   check(`实际打的 ${games} 局比赛里，每一局的英雄都属于该赛季的英雄池`, bad === 0);
   for (const [label, all] of [['S3', all2013], ['S4', all2014], ['S5', all2015]]) console.log(`       ${label} 可用英雄 ${all.length} 个`);
 }
+console.log('\n[赛前 BP]');
+{
+  // 规则：比赛日开打之前，第 1 局的 BP 就已经列出来了
+  const poolOf = (s, pos) => D.championsFor(E.cur(s).year, pos);
+  const poolAll = (s) => new Set(D.POS_ORDER.flatMap((p) => poolOf(s, p)));
+  /** 一份 BP 哪里不对：数量、重复、不在本赛季的英雄池里、选的不是自己位置的英雄 */
+  const problemsOf = (s, bp) => {
+    const bad = [];
+    if (!bp || !bp.self || !bp.opp) return ['没有 BP'];
+    const all = poolAll(s);
+    const seen = new Set();
+    for (const [label, side] of [['我方', bp.self], ['对方', bp.opp]]) {
+      if (side.bans.length !== 3) bad.push(`${label}禁用了 ${side.bans.length} 个`);
+      if (side.picks.length !== 5) bad.push(`${label}选出了 ${side.picks.length} 个`);
+      for (const c of side.bans) {
+        if (!all.has(c)) bad.push(`${label}禁用的 ${c} 不在本赛季的英雄池里`);
+        if (seen.has(c)) bad.push(`${c} 出现了两次`);
+        seen.add(c);
+      }
+      side.picks.forEach((c, i) => {
+        if (!poolOf(s, D.POS_ORDER[i]).includes(c)) bad.push(`${label}的${D.POS_ORDER[i]}选了 ${c}`);
+        if (seen.has(c)) bad.push(`${c} 出现了两次`);
+        seen.add(c);
+      });
+    }
+    return bad;
+  };
+  // 1) 开打前：五个位置都能先拿到一份合法的 BP，而且不会变
+  const shown = [];
+  const badBefore = [];
+  for (const pos of D.POS_ORDER) {
+    const s = E.createGame({ name: '测试', region: 'LPL', pos, trait: 'genius', teamName: '测试队', seed: 11 });
+    E.closeSeasonStart(s);
+    let guard = 0;
+    while (!s.pending && guard++ < 200) {
+      if (s.modal) E.closeSeasonStart(s);
+      else E.act(s, 'rest');
+    }
+    if (!s.pending) {
+      badBefore.push(`${pos}：一直没等到比赛日`);
+      continue;
+    }
+    const bp = E.preMatch(s);
+    if (!bp) {
+      badBefore.push(`${pos}：比赛日拿不到 BP`);
+      continue;
+    }
+    badBefore.push(...problemsOf(s, bp));
+    // 再要一次、存盘再读回来，都应该是同一份（刷新页面不会变）
+    if (JSON.stringify(E.preMatch(s)) !== JSON.stringify(bp)) badBefore.push(`${pos}：再要一次 BP 变了`);
+    if (JSON.stringify(JSON.parse(JSON.stringify(s)).pending.bp) !== JSON.stringify(bp)) badBefore.push(`${pos}：BP 没有跟着存盘`);
+    shown.push({ s, bp, pos });
+  }
+  check('五个位置在开打前都能拿到第 1 局的 BP，再要一次、存盘再读回来都是同一份', shown.length === 5 && badBefore.length === 0, badBefore.slice(0, 3).join('；'));
+  const b0 = shown[0]?.bp;
+  console.log(`       例：${b0 ? `我方${b0.blue === 'self' ? '（蓝色方）' : '（红色方）'}禁用 ${b0.self.bans.join(' ')}、选出 ${b0.self.picks.join(' ')}；对方禁用 ${b0.opp.bans.join(' ')}、选出 ${b0.opp.picks.join(' ')}` : '无'}`);
+  check('赛前 BP：双方各禁用 3 个、各选出 5 个，没有重复，都是本赛季英雄池里对应位置的英雄', shown.length === 5 && badBefore.length === 0, badBefore.slice(0, 3).join('；'));
+  // 2) 开打后：第 1 局用的就是赛前列出的那份，自己的英雄是里面自己位置选出的那个
+  let same = 0;
+  for (const { s, bp, pos } of shown) {
+    E.playPending(s);
+    const g = s.result?.games[0];
+    if (g && JSON.stringify(g.bp) === JSON.stringify(bp) && g.champ === bp.self.picks[D.POS_ORDER.indexOf(pos)] && !s.pending) same++;
+  }
+  check('开打后第 1 局用的就是赛前列出的那份 BP，自己的英雄也是里面自己位置选出的那个', same === 5, `${same} / 5`);
+  // 3) 旧存档：比赛上还没有 BP 也能照常开打
+  {
+    const s = E.createGame({ name: '测试', region: 'LPL', pos: 'mid', trait: 'genius', teamName: '测试队', seed: 12 });
+    E.closeSeasonStart(s);
+    let guard = 0;
+    while (!s.pending && guard++ < 200) {
+      if (s.modal) E.closeSeasonStart(s);
+      else E.act(s, 'rest');
+    }
+    delete s.pending.bp;
+    E.playPending(s);
+    check('旧存档里没有 BP 的比赛：开打时自动补上', problemsOf(s, s.result?.games[0]?.bp).length === 0, problemsOf(s, s.result?.games[0]?.bp).join('，'));
+  }
+  // 4) 完整生涯：每一局的 BP 都合法；同一场系列赛里蓝色方每局轮换；各种比赛都有 BP
+  let games = 0;
+  let bad = 0;
+  let multi = 0;
+  let alternates = 0;
+  const kinds = new Set();
+  const badMsgs = [];
+  for (let seed = 1; seed <= 6; seed++) {
+    const s = E.createGame({ name: '测试', region: 'LPL', pos: ['top', 'jungle', 'mid', 'adc', 'support'][seed % 5], trait: 'genius', teamName: '测试队', seed });
+    let guard = 0;
+    while (s.screen === 'main' && guard++ < 80000) {
+      if (s.modal) E.closeSeasonStart(s);
+      else if (s.result) {
+        kinds.add(s.result.kind);
+        for (const g of s.result.games) {
+          games++;
+          const p = problemsOf(s, g.bp);
+          if (p.length) {
+            bad++;
+            if (badMsgs.length < 3) badMsgs.push(`${E.cur(s).id} ${s.result.label}：${p.join('，')}`);
+          }
+        }
+        if (s.result.games.length > 1) {
+          multi++;
+          if (s.result.games.every((g, i) => i === 0 || g.bp.blue !== s.result.games[i - 1].bp.blue)) alternates++;
+        }
+        E.continueAfterResult(s);
+      } else if (s.pending) E.playPending(s);
+      else if (s.injury > 0) E.restInjury(s);
+      else if (E.canTrain(s)) {
+        // 把自己的队调成最强，保证一路打到世界赛决赛，各种比赛都走到
+        for (const p of D.POS_ORDER) s.team.trainees[p] = 99;
+        for (const a of Object.keys(s.attrs)) s.attrs[a] = 99;
+        E.act(s, 'rest');
+      } else break;
+    }
+  }
+  const allKinds = ['league', 'semi', 'final', 'group', 'qf', 'sf', 'wfinal'];
+  console.log(`       6 段生涯共 ${games} 局，每局都有 BP；多局的系列赛 ${multi} 场；出现过的比赛：${[...kinds].join(' ')}`);
+  check('完整生涯里每一局的 BP 都合法（数量、不重复、本赛季英雄池、对应位置）', bad === 0, badMsgs.join('；'));
+  check('同一场系列赛里，蓝色方每局轮换', multi > 0 && alternates === multi, `${alternates} / ${multi}`);
+  check('常规赛、季后赛半决赛和决赛、世界赛小组赛、八强、四强、决赛都有 BP', allKinds.every((k) => kinds.has(k)), allKinds.filter((k) => !kinds.has(k)).join(','));
+}
+
 console.log('\n[世界赛]');
 {
   // 1) 一直休息、不加点的玩家：进不了世界赛，名单应与当年真实名单完全一致

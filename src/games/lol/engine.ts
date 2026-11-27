@@ -5,7 +5,7 @@
 import { POS_ORDER, type Attr, type Position, type Region } from './data';
 import { carryTeam, DRAW_COST, interest, joinTeam, makeOwnTeam } from './squad';
 import { afterFinal, afterSemi, closeKO, ensureSplit, finishGroups, openKO, record, seedPlayoffs, splitOutcome, startWorlds, worldsOutcome } from './competition';
-import { playSeries } from './match';
+import { playSeries, preMatch } from './match';
 import {
   addTrait, buildPlan, canRestInjury, canTrain, clamp, cur, has, leagueIds, log, overall, pointCost, removeTrait, ri, rnd, seasonAt, seasonCount, splitName, stepOf,
   teamLabel, teamName, tierOf,
@@ -13,6 +13,7 @@ import {
 } from './core';
 
 export * from './core';
+export { preMatch };
 export { DRAW_COST, interest, joinTeam, makeOwnTeam, draw, setMember, release, poolOf, rarityOf, RARITY, imports } from './squad';
 export type { Pool } from './squad';
 export { splitOutcome, worldsOutcome } from './competition';
@@ -182,6 +183,8 @@ export function addPoint(s: GameState, attr: Attr): boolean {
 export function playPending(s: GameState): SeriesResult | null {
   if (!s.pending || s.screen !== 'main') return null;
   const m = s.pending;
+  // BP 本来在比赛日一开始就做好了；旧存档里的比赛可能还没有
+  preMatch(s);
   const r = playSeries(s, m);
   s.pending = null;
   applySeries(s, m, r);
@@ -236,6 +239,7 @@ export function continueAfterResult(s: GameState): void {
     W.queue.shift();
     if (W.queue.length) {
       s.pending = { kind: 'group', split: null, label: `世界赛小组赛 第 ${W.round + 1} 轮`, opp: W.queue[0], bo: 1, elim: false };
+      preMatch(s);
       return;
     }
     W.round += 1;
@@ -257,6 +261,12 @@ function advance(s: GameState): void {
  * 比赛日如果轮不到自己，就就地变成训练日。
  */
 function enter(s: GameState): void {
+  walkToDecision(s);
+  // 比赛日的 BP 在这里就做好：开打之前列出来给玩家看，刷新页面也不会变
+  if (s.pending) preMatch(s);
+}
+
+function walkToDecision(s: GameState): void {
   for (let guard = 0; guard < 400; guard++) {
     if (s.screen !== 'main' || s.pending || s.result || s.modal) return;
     const step = stepOf(s);

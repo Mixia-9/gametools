@@ -51,6 +51,20 @@ export interface TeamState {
   coord: number;
 }
 
+/** 一局比赛里一边的 BP：禁用 3 个，选出 5 个（按 上单/打野/中单/ADC/辅助 的顺序） */
+export interface BpSide {
+  bans: string[];
+  picks: string[];
+}
+
+/** 一局比赛的 BP */
+export interface Bp {
+  /** 蓝色方是哪一边；一场系列赛里每局轮换 */
+  blue: 'self' | 'opp';
+  self: BpSide;
+  opp: BpSide;
+}
+
 export interface GameLine {
   win: boolean;
   k: number;
@@ -61,6 +75,7 @@ export interface GameLine {
   mvp: boolean;
   note: string;
   dur: number;
+  bp: Bp;
 }
 
 export interface Pending {
@@ -71,6 +86,8 @@ export interface Pending {
   bo: 1 | 3 | 5;
   /** 淘汰赛：输了就出局 */
   elim: boolean;
+  /** 第 1 局的 BP：开打之前就列出来。旧存档里的比赛可能还没有 */
+  bp?: Bp;
 }
 
 export interface SeriesResult extends Pending {

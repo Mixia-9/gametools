@@ -61,12 +61,13 @@
       (a) => `<i class="h-1.5 w-2.5 rounded-full bg-violet-500" style="${p.attrs ? `opacity:${0.15 + (p.attrs![a.id] / 100) * 0.85}` : 'opacity:0.12'}"></i>`
     ).join('')}</span>`;
 
-  type Row = { id: string; pos: Position; overall: number; attrs?: Record<Attr, number>; locked?: boolean; me?: boolean; note?: string };
+  type Row = { id: string; pos: Position; overall: number; attrs?: Record<Attr, number>; locked?: boolean; me?: boolean; note?: string; champ?: string };
 
   const playerRow = (p: Row) => `
     <div class="flex items-center justify-between gap-2 py-1 text-sm ${p.me ? 'font-semibold text-ink' : 'text-ink-muted'}">
       <span class="flex min-w-0 items-center gap-1.5">
         <span class="w-8 shrink-0 text-xs text-ink-faint">${posName(p.pos)}</span>
+        ${p.champ ? `<span class="shrink-0 whitespace-nowrap rounded bg-violet-500/10 px-1.5 py-0.5 text-xs font-semibold text-violet-700 dark:text-violet-400">${esc(p.champ)}</span>` : ''}
         <span class="truncate">${esc(p.id)}${p.locked ? ' <span title="非卖品：抽不到，也不能通过加入战队挤掉">🔒</span>' : ''}${p.note ? ` <span class="text-xs text-ink-faint">${esc(p.note)}</span>` : ''}</span>
       </span>
       <span class="flex shrink-0 items-center gap-2">${attrBars(p)}<b class="w-7 text-right tabular-nums ${p.me ? 'text-ink' : 'text-ink'}">${num(p.overall)}</b></span>
@@ -88,8 +89,10 @@
     });
   }
 
-  const teamHead = (st: GameState, id: string) =>
-    `<div class="flex items-baseline justify-between gap-2"><span class="font-semibold">${esc(E.teamLabel(st, id))}</span><span class="text-sm text-ink-faint">实力 <b class="text-ink">${num(E.teamRating(st, id))}</b></span></div>`;
+  const teamHead = (st: GameState, id: string, tag = '') =>
+    `<div class="flex items-baseline justify-between gap-2"><span class="font-semibold">${esc(E.teamLabel(st, id))}${tag ? ` <span class="rounded bg-chip px-1.5 py-0.5 text-[11px] font-normal text-ink-muted">${tag}</span>` : ''}</span><span class="text-sm text-ink-faint">实力 <b class="text-ink">${num(E.teamRating(st, id))}</b></span></div>`;
+
+  const sideName = (bp: E.Bp, who: 'self' | 'opp') => (bp.blue === who ? '蓝色方' : '红色方');
 
   const card = (title: string, body: string, extra = '') =>
     `<section class="rounded-xl border border-edge bg-card p-4 ${extra}"><h3 class="mb-2 text-sm font-bold uppercase tracking-wide text-ink-faint">${title}</h3>${body}</section>`;
@@ -111,7 +114,7 @@
             ${REGIONS.map((r) =>
               regions.includes(r.id)
                 ? `<button type="button" data-pick="region" data-v="${r.id}" class="pick rounded-lg border px-3 py-2 text-left transition ${ui.pick.region === r.id ? 'border-violet-500 bg-violet-500/10' : 'border-edge hover:border-violet-500/50'}"><b>${r.name}</b><span class="block text-xs text-ink-faint">${r.desc}</span></button>`
-                : `<div title="这个赛区当年的联赛名单还没核实完，暂时不能选" class="cursor-not-allowed rounded-lg border border-dashed border-edge px-3 py-2 opacity-60"><b>${r.name}</b><span class="block text-xs text-ink-faint">名单核实中</span></div>`
+                : `<div title="这个赛区当年的联赛名单没有录入，暂时不能选" class="cursor-not-allowed rounded-lg border border-dashed border-edge px-3 py-2 opacity-60"><b>${r.name}</b><span class="block text-xs text-ink-faint">暂不可选</span></div>`
             ).join('')}
           </div>
           <p class="mt-4 text-sm font-semibold">位置</p>
@@ -179,16 +182,40 @@
     );
   }
 
+  /** 赛前 BP 板：每名首发前面标出他这一局用的英雄，队伍名下面是这一边禁用的三个 */
   function matchCard(st: GameState, m: E.Pending): string {
+    // 引擎在比赛日一开始就把 BP 做好了，这里拿到的就是开打后真正用的那一份
+    const bp = E.preMatch(st) ?? undefined;
+    const col = (id: string, who: 'self' | 'opp') => {
+      const side = bp?.[who];
+      return `<div>${teamHead(st, id, bp ? sideName(bp, who) : '')}${
+        side ? `<p class="mt-1 text-xs text-ink-faint">禁用${side.bans.map((c) => ` <span class="inline-block whitespace-nowrap rounded bg-chip px-1.5 py-0.5 text-ink-muted line-through decoration-red-500/70">${esc(c)}</span>`).join('')}</p>` : ''
+      }
+        <div class="mt-1">${rosterOf(st, id).map((p) => playerRow({ ...p, champ: side?.picks[POS_ORDER.indexOf(p.pos)] })).join('')}</div></div>`;
+    };
     return card(
       `比赛日 · ${esc(m.label)}`,
-      `<div class="grid gap-4 sm:grid-cols-2">
-        <div>${teamHead(st, st.team.id)}<div class="mt-1">${rosterOf(st, st.team.id).map(playerRow).join('')}</div></div>
-        <div>${teamHead(st, m.opp)}<div class="mt-1">${rosterOf(st, m.opp).map(playerRow).join('')}</div></div>
-      </div>
-      <p class="mt-3 text-sm text-ink-muted">赛制：${m.bo === 1 ? '单场决胜' : `BO${m.bo}`}${m.elim ? '，输了就出局' : ''}。</p>
+      `<p class="mb-2 text-sm text-ink-muted"><b class="text-ink">第 1 局 BP</b>　双方各禁用 3 个英雄，五个位置各选 1 个；英雄名后面是这一局用它的选手。</p>
+      <div class="grid gap-4 sm:grid-cols-2">${col(st.team.id, 'self')}${col(m.opp, 'opp')}</div>
+      <p class="mt-3 text-sm text-ink-muted">赛制：${m.bo === 1 ? '单场决胜' : `BO${m.bo}`}${m.elim ? '，输了就出局' : ''}。${m.bo === 1 ? '' : '后面每一局的 BP 会随那一局的结果一起列出。'}</p>
       <button type="button" data-act="play" class="mt-4 rounded-xl bg-violet-600 px-5 py-2.5 font-semibold text-white transition hover:bg-violet-500">开始比赛</button>`
     );
+  }
+
+  /** 赛后每一局的 BP：表头是两边各自的颜色方，下面两行是禁用 / 选出 */
+  function bpBlock(st: GameState, bp: E.Bp | undefined): string {
+    if (!bp) return '';
+    const mine = POS_ORDER.indexOf(st.pos);
+    // 英雄名整个不拆开，放不下时在名字和名字之间换行
+    const names = (list: string[], o: { banned?: boolean; me?: boolean } = {}) =>
+      `<span class="flex flex-wrap gap-x-2 gap-y-0.5">${list
+        .map((c, i) => `<span class="whitespace-nowrap ${o.banned ? 'text-ink-faint line-through decoration-red-500/60' : o.me && i === mine ? 'font-semibold text-violet-600 dark:text-violet-400' : 'text-ink-muted'}">${esc(c)}</span>`)
+        .join('')}</span>`;
+    return `<div class="mt-1.5 grid grid-cols-[2.5em_1fr_1fr] gap-x-3 gap-y-1 text-xs">
+          <span></span><span class="text-ink-faint">我方 · ${sideName(bp, 'self')}</span><span class="text-ink-faint">对方 · ${sideName(bp, 'opp')}</span>
+          <span class="text-ink-faint">禁用</span>${names(bp.self.bans, { banned: true })}${names(bp.opp.bans, { banned: true })}
+          <span class="text-ink-faint">选出</span>${names(bp.self.picks, { me: true })}${names(bp.opp.picks)}
+        </div>`;
   }
 
   function resultCard(st: GameState, r: E.SeriesResult): string {
@@ -202,6 +229,7 @@
             <span class="text-ink">${esc(g.champ)}　<b class="tabular-nums">${g.k}/${g.d}/${g.a}</b>　<span class="text-ink-faint">${g.dur} 分钟</span></span>
             <span class="tabular-nums">评分 <b class="${g.score >= 8 ? 'text-emerald-600 dark:text-emerald-400' : g.score < 6 ? 'text-red-600 dark:text-red-400' : 'text-ink'}">${num(g.score)}</b>${g.mvp ? ' <span class="rounded bg-amber-400 px-1 text-xs font-bold text-zinc-900">MVP</span>' : ''}</span>
           </div>
+          ${bpBlock(st, g.bp)}
           <p class="mt-1 text-ink-muted">${esc(g.note)}</p>
         </li>`
       ).join('')}</ol>
