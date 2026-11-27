@@ -123,6 +123,51 @@ console.log('\n[抽卡]');
   check(`首发可以有两名外援（${r1.ok}, ${r2.ok}），第三名被拒：${r3.why}`, r1.ok && r2.ok && !r3.ok && r3.why.includes('外援'));
 }
 
+console.log('\n[英雄与赛季]');
+{
+  // 规则：每个赛季只用当前赛季之前上线的英雄
+  const pool = (year, pos) => D.championsFor(year, pos);
+  const allOf = (year) => D.POS_ORDER.flatMap((pos) => pool(year, pos));
+  const all2013 = allOf(2013);
+  const all2014 = allOf(2014);
+  const all2015 = allOf(2015);
+  const noneOf = (all, names) => names.every((n) => !all.includes(n));
+  const allOfNames = (all, names) => names.every((n) => all.includes(n));
+  check('S3（2013）里没有千珏、纳尔、艾克、巴德、布隆、滑板鞋、雷克塞、沙皇', noneOf(all2013, ['千珏', '纳尔', '艾克', '巴德', '布隆', '滑板鞋', '雷克塞', '沙皇']));
+  check('S3（2013）里没有 2013 年才上线的卢锡安、金克丝、剑魔、扎克、奎因、亚索、锤石、冰女', noneOf(all2013, ['卢锡安', '金克丝', '剑魔', '扎克', '奎因', '亚索', '锤石', '冰女']));
+  check('S3（2013）里有劫、盲僧、薇恩、发条、风女，以及 2012 年上线的婕拉、娜美', allOfNames(all2013, ['劫', '盲僧', '薇恩', '发条', '风女', '婕拉', '娜美']));
+  check('S4（2014）里有 2013 年上线的卢锡安、金克丝、剑魔、扎克、奎因、亚索、锤石、冰女', allOfNames(all2014, ['卢锡安', '金克丝', '剑魔', '扎克', '奎因', '亚索', '锤石', '冰女']));
+  check('S4（2014）里没有 2014 年才上线的纳尔、布隆、滑板鞋、雷克塞、沙皇', noneOf(all2014, ['纳尔', '布隆', '滑板鞋', '雷克塞', '沙皇']));
+  check('S5（2015）里有纳尔、布隆、滑板鞋、雷克塞、沙皇', allOfNames(all2015, ['纳尔', '布隆', '滑板鞋', '雷克塞', '沙皇']));
+  check('S5（2015）里没有 2015 年上线的千珏、艾克、巴德、塔姆', noneOf(all2015, ['千珏', '艾克', '巴德', '塔姆']));
+  check('三个赛季、每个位置的英雄池都不为空', [2013, 2014, 2015].every((y) => D.POS_ORDER.every((pos) => pool(y, pos).length >= 8)));
+  // 实际打出来的比赛里，英雄必须在该赛季的英雄池里
+  let games = 0;
+  let bad = 0;
+  for (const pos of D.POS_ORDER) {
+    const s = E.createGame({ name: '测试', region: 'LPL', pos, trait: 'genius', teamName: '测试队', seed: 42 });
+    let guard = 0;
+    while (s.screen === 'main' && guard++ < 60000) {
+      if (s.modal) E.closeSeasonStart(s);
+      else if (s.result) {
+        const allowed = pool(E.cur(s).year, pos);
+        for (const g of s.result.games) {
+          games++;
+          if (!allowed.includes(g.champ)) {
+            bad++;
+            if (bad <= 3) console.log(`       ${E.cur(s).id} 的 ${pos} 打出了 ${g.champ}`);
+          }
+        }
+        E.continueAfterResult(s);
+      } else if (s.pending) E.playPending(s);
+      else if (s.injury > 0) E.restInjury(s);
+      else if (E.canTrain(s)) E.act(s, E.canDo(s, 'scrim').ok ? 'scrim' : 'rest');
+      else break;
+    }
+  }
+  check(`实际打的 ${games} 局比赛里，每一局的英雄都属于该赛季的英雄池`, bad === 0);
+  for (const [label, all] of [['S3', all2013], ['S4', all2014], ['S5', all2015]]) console.log(`       ${label} 可用英雄 ${all.length} 个`);
+}
 console.log('\n[世界赛]');
 {
   // 1) 一直休息、不加点的玩家：进不了世界赛，名单应与当年真实名单完全一致

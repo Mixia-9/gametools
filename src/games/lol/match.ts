@@ -1,8 +1,8 @@
 /**
  * 比赛模拟：一场/一个系列赛的胜负，以及自己每一局的数据和播报。
  */
-import { CHAMPIONS, type Position } from './data';
-import { clamp, gauss, has, overall, ri, rnd, teamRating, type GameLine, type GameState, type Pending, type SeriesResult } from './core';
+import { championsFor, type Position } from './data';
+import { clamp, cur, gauss, has, overall, ri, rnd, teamRating, type GameLine, type GameState, type Pending, type SeriesResult } from './core';
 
 /** 实力差换算成胜率：差 10 点约 60%，差 20 点约 79%（差距不大时爆冷不少见） */
 export const winProb = (ra: number, rb: number) => 1 / (1 + Math.pow(10, -(ra - rb) / 34));
@@ -83,7 +83,7 @@ const LINES: Lines = {
   },
   support: {
     win: {
-      hi: ['你的{c}钩中三次关键目标，每一次都打开了局面。', '你的视野布满野区，对面打野无所遁形。', '你的{c}开团控住三人，队友跟上收割。'],
+      hi: ['你三次命中关键的控制，每一次都打开了局面。', '你的视野布满野区，对面打野无所遁形。', '你的{c}开团控住三人，队友跟上收割。'],
       mid: ['你的视野和游走都中规中矩。'],
       lo: ['你下路被越塔两次，好在队友后期 carry。', '你几波开团送掉了自己，队友还是赢下。'],
     },
@@ -116,7 +116,8 @@ function gameLine(s: GameState, win: boolean, oppRating: number): GameLine {
   const score = clamp(5.6 + 3.4 * (Math.sqrt(Math.max(rel, 0.05)) - 1) + (win ? 1.0 : -0.6) + (R - oppRating) * 0.03, 3, 10);
   const tier: Tier = score >= 8 ? 'hi' : score >= 6 ? 'mid' : 'lo';
   const list = LINES[s.pos][win ? 'win' : 'lose'][tier];
-  const champs = CHAMPIONS[s.pos];
+  // 只用当前赛季之前上线的英雄
+  const champs = championsFor(cur(s).year, s.pos);
   const champ = champs[ri(s, 0, champs.length - 1)];
   return {
     win,
