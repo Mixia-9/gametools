@@ -2,7 +2,7 @@
  * 比赛模拟：赛前的 BP，一场/一个系列赛的胜负，以及自己每一局的数据和播报。
  */
 import { POS_ORDER, championsFor, type Position } from './data';
-import { clamp, cur, gauss, has, overall, ri, rnd, teamRating, type Bp, type BpSide, type GameLine, type GameState, type Pending, type SeriesResult } from './core';
+import { clamp, cur, gauss, overall, ri, rnd, teamRating, traitFx, type Bp, type BpSide, type Fx, type GameLine, type GameState, type Pending, type SeriesResult } from './core';
 
 /** 实力差换算成胜率：差 10 点约 60%，差 20 点约 79%（差距不大时爆冷不少见） */
 export const winProb = (ra: number, rb: number) => 1 / (1 + Math.pow(10, -(ra - rb) / 34));
@@ -159,6 +159,28 @@ function gameLine(s: GameState, win: boolean, oppRating: number, bp: Bp): GameLi
   };
 }
 
+const WORLDS_KINDS: Pending['kind'][] = ['group', 'qf', 'sf', 'wfinal'];
+/** 选来的词条在一场比赛里最多加这么多胜率；开局和自动获得的词条不受这个限制 */
+export const PICK_WIN_CAP = 0.08;
+
+/** 这个局面下词条给的胜率加成 */
+export function traitWin(s: GameState, m: Pending, o: { deciding: boolean; first: boolean; late: boolean; ahead: boolean; behind: boolean; underdog: boolean; blue: boolean }): number {
+  const { base, pick } = traitFx(s);
+  const sum = (x: Fx) =>
+    (m.kind === 'league' ? x.league : 0) +
+    (m.elim ? x.elim : 0) +
+    (WORLDS_KINDS.includes(m.kind) ? x.worlds : 0) +
+    (m.bo === 1 ? x.bo1 : 0) +
+    (o.deciding ? x.decider : 0) +
+    (o.first ? x.firstGame : 0) +
+    (o.late ? x.late : 0) +
+    (o.ahead ? x.ahead : 0) +
+    (o.behind ? x.behind : 0) +
+    (o.underdog ? x.underdog : 0) +
+    (o.blue ? x.blue : x.red);
+  return sum(base) + Math.min(PICK_WIN_CAP, sum(pick));
+}
+
 /** 自己打的系列赛：逐局决定胜负，状态和词条会影响胜率 */
 export function playSeries(s: GameState, m: Pending): SeriesResult {
   const need = (m.bo + 1) / 2;
@@ -174,11 +196,7 @@ export function playSeries(s: GameState, m: Pending): SeriesResult {
     const deciding = m.elim && win === need - 1 && lose === need - 1;
     // 状态：体力越差越不稳；带伤上阵再打折扣
     let p = winProb(selfRating + (s.stamina - 60) / 15 - (s.injury > 0 ? 5 : 0), oppRating);
-    if (m.elim) {
-      if (has(s, 'reborn')) p += 0.04;
-      if (has(s, 'worldchamp')) p += 0.03;
-      if (deciding && has(s, 'clutch')) p += 0.12;
-    }
+    p += traitWin(s, m, { deciding, first: games.length === 0, late: games.length >= 2, ahead: win > lose, behind: lose > win, underdog: oppRating > selfRating, blue: bp.blue === 'self' });
     const won = rnd(s) < clamp(p, 0.05, 0.95);
     games.push(gameLine(s, won, oppRating, bp));
     s.stamina = Math.max(0, s.stamina - 6);

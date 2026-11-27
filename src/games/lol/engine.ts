@@ -2,19 +2,19 @@
  * 主流程：创建生涯、每天的行动、比赛日的推进、赛季结束与存档。
  * 界面只需要调用这里导出的函数。
  */
-import { POS_ORDER, type Attr, type Position, type Region } from './data';
-import { carryTeam, DRAW_COST, interest, joinTeam, makeOwnTeam } from './squad';
+import { POS_ORDER, QUALITY_WEIGHT, TRAITS, type Attr, type Position, type Region, type Trait } from './data';
+import { carryTeam, DRAW_COST, importLimit, interest, joinTeam, makeOwnTeam } from './squad';
 import { afterFinal, afterSemi, closeKO, ensureSplit, finishGroups, openKO, record, seedPlayoffs, splitOutcome, startWorlds, worldsOutcome } from './competition';
-import { playSeries, preMatch } from './match';
+import { PICK_WIN_CAP, playSeries, preMatch, traitWin } from './match';
 import {
-  addTrait, buildPlan, canRestInjury, canTrain, clamp, cur, has, leagueIds, log, overall, pointCost, removeTrait, ri, rnd, seasonAt, seasonCount, splitName, stepOf,
-  teamLabel, teamName, tierOf,
+  accrue, addTrait, buildPlan, canRestInjury, canTrain, clamp, cur, fx, has, leagueIds, log, overall, pointCost, refreshStamina, removeTrait, ri, rnd, seasonAt, seasonCount,
+  splitName, stepOf, teamLabel, teamName, tierOf, traitInfo,
   type Action, type GameState, type Pending, type SeasonSummary, type SeriesResult, type SplitId,
 } from './core';
 
 export * from './core';
-export { preMatch };
-export { DRAW_COST, interest, joinTeam, makeOwnTeam, draw, setMember, release, poolOf, rarityOf, RARITY, imports } from './squad';
+export { preMatch, traitWin, PICK_WIN_CAP };
+export { DRAW_COST, importLimit, interest, joinTeam, makeOwnTeam, draw, setMember, release, poolOf, rarityOf, drawWeights, RARITY, imports } from './squad';
 export type { Pool } from './squad';
 export { splitOutcome, worldsOutcome } from './competition';
 
@@ -69,9 +69,15 @@ export function createGame(o: NewGame): GameState {
     history: [],
     log: [],
     stats: { games: 0, wins: 0, mvp: 0, series: 0, seriesWins: 0 },
+    pointsAdded: 0,
+    traitPicks: 0,
+    traitOffer: null,
+    pickStreak: 0,
+    tpCarry: 0,
+    fundsCarry: 0,
   } as GameState;
   for (const p of POS_ORDER) s.team.trainees[p] = 40 + ri(s, 0, 4);
-  if (has(s, 'iron')) s.maxStamina = 140;
+  refreshStamina(s);
   s.stamina = s.maxStamina;
   log(s, `你带着上一世的记忆醒来：${seasonAt(0).year} 年，17 岁，ID「${s.name}」，${POS_LABEL[s.pos]}选手，效力于自己成立的战队「${s.team.name}」。`, 'title');
   seasonStart(s);
@@ -79,7 +85,8 @@ export function createGame(o: NewGame): GameState {
 }
 
 function seasonStart(s: GameState): void {
-  if (has(s, 'reborn')) s.tp += 10;
+  const gift = fx(s).seasonTp;
+  if (gift > 0) s.tp += gift;
   s.modal = { kind: 'seasonStart' };
   log(s, `${cur(s).id} 赛季（${cur(s).year} 年）开始，你 ${s.age} 岁。`, 'title');
 }
@@ -98,9 +105,11 @@ export const ACTIONS: { id: Action; name: string; desc: string; cost: number }[]
   { id: 'rest', name: '休息', desc: '恢复体力', cost: 0 },
 ];
 
-function costOf(s: GameState, a: Action): number {
+/** 一个行动今天要花多少体力：词条可以减免 */
+export function costOf(s: GameState, a: Action): number {
+  const f = fx(s);
   const base = ACTIONS.find((x) => x.id === a)!.cost;
-  return a === 'rank' && has(s, 'grinder') ? base - 5 : base;
+  return Math.max(0, base + (a === 'rank' ? f.rankStamina : a === 'rest' ? 0 : f.trainStamina));
 }
 
 export function canDo(s: GameState, a: Action): { ok: boolean; why: string } {
@@ -108,6 +117,20 @@ export function canDo(s: GameState, a: Action): { ok: boolean; why: string } {
   if (s.stamina < costOf(s, a)) return { ok: false, why: '体力不够，先休息' };
   return { ok: true, why: '' };
 }
+
+/** 训练收益的倍率：词条的加成 × 体力很低时的折扣（“铁血意志”让折扣轻一些） */
+export function trainGain(s: GameState): number {
+  const f = fx(s);
+  return f.tp * (s.stamina < 30 ? (f.grit ? 0.85 : 0.6) : 1);
+}
+
+/** 现在加练受伤的概率：基础 18%，体力很低时更高；词条可以把它压低 */
+export function injuryRisk(s: GameState): number {
+  return (0.18 + (s.stamina < 20 ? 0.12 : 0)) * fx(s).injury;
+}
+
+/** 休息一天恢复多少体力 */
+export const restRecover = (s: GameState) => Math.round(45 * fx(s).recover);
 
 /** 连续 n 天做同样的行动，遇到比赛日等情况会提前停下。返回实际做了几天 */
 export function act(s: GameState, a: Action, times = 1): number {
@@ -121,40 +144,42 @@ export function act(s: GameState, a: Action, times = 1): number {
 }
 
 function doOne(s: GameState, a: Action): void {
-  const gain = (has(s, 'genius') ? 1.25 : 1) * (has(s, 'injury') ? 0.85 : 1) * (s.stamina < 30 ? 0.6 : 1);
+  const f = fx(s);
   if (a === 'rank') {
     s.stamina -= costOf(s, a);
     // 胜率看实力比当前段位的要求高多少
     const p = clamp(0.25 + (overall(s) - (20 + tierOf(s).idx * 14)) / 55, 0.2, 0.95);
     let wins = 0;
     for (let i = 0; i < 6; i++) if (rnd(s) < p) wins++;
-    let delta = Math.round((wins * 2 - 6) * 7 * (has(s, 'grinder') ? 1.4 : 1));
-    if (delta < 0 && has(s, 'rankedking')) delta = Math.ceil(delta / 2);
+    // 上分的倍率只作用在加分上，掉分的减免只作用在掉分上
+    let delta = (wins * 2 - 6) * 7;
+    if (delta > 0) delta = Math.round(delta * f.rank);
+    else if (delta < 0 && f.rankLoss < 1) delta = Math.ceil(delta * f.rankLoss);
     s.rank = clamp(s.rank + delta, 0, 1000);
-    s.tp += Math.round(ri(s, 3, 5) * gain);
-    s.funds += 4 + wins * 2;
+    accrue(s, 'tp', ri(s, 3, 5) * trainGain(s));
+    accrue(s, 'funds', (4 + wins * 2) * f.funds);
     log(s, `排位 ${wins} 胜 ${6 - wins} 负，段位分 ${delta >= 0 ? '+' : ''}${delta}。`, delta >= 0 ? 'good' : 'bad');
     if (tierOf(s).idx === cur(s).tiers.length - 1 && !has(s, 'rankedking')) addTrait(s, 'rankedking');
   } else if (a === 'scrim') {
     s.stamina -= costOf(s, a);
-    s.tp += Math.round(ri(s, 4, 6) * gain);
-    s.funds += 6;
-    if (s.team.coord < 4 && rnd(s) < 0.5) s.team.coord = Math.min(4, s.team.coord + 0.5);
+    accrue(s, 'tp', ri(s, 4, 6) * trainGain(s));
+    accrue(s, 'funds', 6 * f.funds);
+    if (s.team.coord < 4 && rnd(s) < Math.min(1, 0.5 * f.coord)) s.team.coord = Math.min(4, s.team.coord + 0.5);
     const others = leagueIds(s).filter((id) => id !== s.team.id);
     const partner = others.length ? teamName(s, others[ri(s, 0, others.length - 1)]) : '路人群雄';
     log(s, `和 ${partner} 打了一天训练赛，复盘到深夜。`);
   } else if (a === 'overtrain') {
     s.stamina -= costOf(s, a);
-    s.tp += Math.round(ri(s, 7, 10) * gain);
-    const risk = has(s, 'iron') ? 0.02 : 0.18 + (s.stamina < 20 ? 0.12 : 0);
-    if (rnd(s) < risk) {
-      s.injury = 8;
+    accrue(s, 'tp', ri(s, 7, 10) * trainGain(s));
+    if (rnd(s) < injuryRisk(s)) {
+      s.injury = Math.max(2, 8 - f.heal);
       addTrait(s, 'injury');
-      log(s, '手腕一阵刺痛——你受伤了，需要静养 8 天。', 'bad');
+      log(s, `手腕一阵刺痛——你受伤了，需要静养 ${s.injury} 天。`, 'bad');
     } else log(s, '加练到凌晨，收获不小，但身体在报警。');
   } else {
-    s.stamina = Math.min(s.maxStamina, s.stamina + 45);
-    log(s, '睡到自然醒，去楼下吃了顿好的。');
+    s.stamina = Math.min(s.maxStamina, s.stamina + restRecover(s));
+    if (f.restTp) s.tp += f.restTp;
+    log(s, f.restTp ? `睡到自然醒，去楼下吃了顿好的。躺着也想通了几件事（训练点 +${f.restTp}）。` : '睡到自然醒，去楼下吃了顿好的。');
   }
   advance(s);
 }
@@ -168,14 +193,99 @@ export function restInjury(s: GameState): void {
   advance(s);
 }
 
-/** 用训练点给一项属性加 1 点。越高越贵 */
+/** 给一项属性加 1 点现在要花多少训练点：越高越贵，词条可以让它便宜 */
+export function pointCostFor(s: GameState, attr: Attr): number {
+  return Math.max(1, Math.round(pointCost(s.attrs[attr]) * fx(s).cost));
+}
+
+/** 用训练点给一项属性加 1 点。每加满 PICK_EVERY 点，多一次选词条的机会 */
 export function addPoint(s: GameState, attr: Attr): boolean {
   const v = s.attrs[attr];
-  const cost = pointCost(v);
+  const cost = pointCostFor(s, attr);
   if (v >= 99 || s.tp < cost) return false;
   s.tp -= cost;
   s.attrs[attr] = v + 1;
+  s.pointsAdded += 1;
+  if (s.pointsAdded % PICK_EVERY === 0) {
+    s.traitPicks += 1;
+    log(s, '你对这个版本又多了一分理解——可以选一个新词条了。', 'title');
+  }
   return true;
+}
+
+// ---------- 选词条 ----------
+/** 每加这么多点属性，多一次选词条的机会 */
+export const PICK_EVERY = 20;
+/** 一次给出几个选项 */
+export const OFFER_SIZE = 3;
+/** 连续这么多次没出史诗以上，下一次必出 */
+export const EPIC_PITY = 5;
+
+/** 现在能选的几个词条。还没摇过就先摇出来并存进状态，刷新页面也不会变 */
+export function traitOptions(s: GameState): Trait[] {
+  if (s.traitPicks <= 0) return [];
+  if (!s.traitOffer) s.traitOffer = rollOffer(s);
+  return s.traitOffer.map((id) => traitInfo(id)).filter((t): t is Trait => !!t && !has(s, t.id));
+}
+
+/** 摇一组选项：每个选项先定品质，再在这个品质里随机；这个品质没有可选的就往下降 */
+function rollOffer(s: GameState): string[] {
+  const offer: string[] = [];
+  const usable = (q: number) => TRAITS.filter((t) => t.pick && t.quality === q && !has(s, t.id) && !offer.includes(t.id) && (!t.pos || t.pos.includes(s.pos)));
+  // 保底只保证其中一张是史诗以上
+  let pity = s.pickStreak >= EPIC_PITY;
+  for (let slot = 0; slot < OFFER_SIZE; slot++) {
+    let q = 0;
+    if (pity) q = rnd(s) < 0.2 ? 3 : 2;
+    else {
+      let roll = rnd(s) * 100;
+      for (let k = QUALITY_WEIGHT.length - 1; k >= 0; k--) {
+        if (roll < QUALITY_WEIGHT[k]) {
+          q = k;
+          break;
+        }
+        roll -= QUALITY_WEIGHT[k];
+      }
+    }
+    pity = false;
+    let cand = usable(q);
+    for (let k = q - 1; k >= 0 && !cand.length; k--) cand = usable(k);
+    if (!cand.length) break;
+    offer.push(cand[ri(s, 0, cand.length - 1)].id);
+  }
+  return offer;
+}
+
+/** 选走一个词条。只能选当前选项里的，已经有的不能重复选 */
+export function pickTrait(s: GameState, id: string): boolean {
+  const t = traitOptions(s).find((x) => x.id === id);
+  if (!t) return false;
+  addTrait(s, id);
+  if (t.fx?.tpNow) s.tp += t.fx.tpNow;
+  if (t.fx?.fundsNow) s.funds += t.fx.fundsNow;
+  refreshStamina(s);
+  s.traitPicks = Math.max(0, s.traitPicks - 1);
+  s.traitOffer = null;
+  s.pickStreak = (t.quality ?? 0) >= 2 ? 0 : s.pickStreak + 1;
+  return true;
+}
+
+/** 给测试和模拟用的机器人：把能选的都选掉，每次选品质最高的那个。返回选了几个 */
+export function autoPick(s: GameState): number {
+  let n = 0;
+  while (s.traitPicks > 0 && n < 200) {
+    const offer = traitOptions(s);
+    if (!offer.length) {
+      // 已经没有可选的词条了
+      s.traitPicks = 0;
+      s.traitOffer = null;
+      break;
+    }
+    const best = [...offer].sort((a, b) => (b.quality ?? 0) - (a.quality ?? 0))[0];
+    if (!pickTrait(s, best.id)) break;
+    n++;
+  }
+  return n;
 }
 
 // ---------- 比赛日 ----------
@@ -193,8 +303,8 @@ export function playPending(s: GameState): SeriesResult | null {
 }
 
 function applySeries(s: GameState, m: Pending, r: SeriesResult): void {
-  const mult = (has(s, 'genius') ? 1.25 : 1) * (has(s, 'injury') ? 0.85 : 1) * (has(s, 'champion') ? 1.5 : 1);
-  s.tp += Math.round((1 + Math.ceil(r.win / 2)) * mult);
+  const f = fx(s);
+  accrue(s, 'tp', (1 + Math.ceil(r.win / 2)) * f.matchTp);
   s.stats.games += r.games.length;
   s.stats.wins += r.win;
   s.stats.series += 1;
@@ -205,11 +315,11 @@ function applySeries(s: GameState, m: Pending, r: SeriesResult): void {
     const sp = s.split[m.split]!;
     record(sp.table, me, m.opp, r.win, r.lose);
     sp.played += 1;
-    s.funds += r.won ? 40 : 15;
+    accrue(s, 'funds', (r.won ? 40 : 15) * f.funds);
     r.after = `联赛战绩 ${sp.table[me].w} 胜 ${sp.table[me].l} 负`;
   } else if ((m.kind === 'semi' || m.kind === 'final') && m.split) {
     const sp = s.split[m.split]!;
-    s.funds += r.won ? 80 : 30;
+    accrue(s, 'funds', (r.won ? 80 : 30) * f.funds);
     r.after = m.kind === 'semi' ? afterSemi(s, sp, m.split, r.won) : afterFinal(s, sp, m.split, r.won);
   } else if (m.kind === 'group') {
     const t = s.worlds!.tables[s.worlds!.userGroup];
@@ -220,10 +330,10 @@ function applySeries(s: GameState, m: Pending, r: SeriesResult): void {
       t[m.opp].w++;
       t[me].l++;
     }
-    s.funds += r.won ? 30 : 8;
+    accrue(s, 'funds', (r.won ? 30 : 8) * f.funds);
     r.after = `小组赛 ${t[me].w} 胜 ${t[me].l} 负`;
   } else {
-    s.funds += r.won ? 120 : 40;
+    accrue(s, 'funds', (r.won ? 120 : 40) * f.funds);
     r.after = closeKO(s, r.won, r.games.reduce((sum, g) => sum + g.score, 0) / r.games.length);
   }
   log(s, `${m.label}：${r.won ? '胜' : '负'} ${r.win}-${r.lose} ${teamLabel(s, m.opp)}`, r.won ? 'good' : 'bad');
@@ -390,10 +500,21 @@ export function save(s: GameState): void {
   }
 }
 
+/** 旧存档补上后来才加的字段 */
+export function migrate(s: GameState): GameState {
+  s.pointsAdded ??= 0;
+  s.traitPicks ??= 0;
+  s.traitOffer ??= null;
+  s.pickStreak ??= 0;
+  s.tpCarry ??= 0;
+  s.fundsCarry ??= 0;
+  return s;
+}
+
 export function load(): GameState | null {
   try {
     const s = JSON.parse(localStorage.getItem(SAVE_KEY) ?? 'null') as GameState | null;
-    return s && s.v === 1 && s.season < seasonCount() ? s : null;
+    return s && s.v === 1 && s.season < seasonCount() ? migrate(s) : null;
   } catch {
     return null;
   }

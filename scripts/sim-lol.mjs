@@ -82,6 +82,7 @@ function play(style, seed) {
   let guard = 0;
   let injuries = 0;
   let draws = 0;
+  let picks = 0;
   while (s.screen !== 'careerEnd') {
     if (guard++ > 60000) throw new Error(`${style} #${seed}: 跑不完，卡在 ${s.plan[s.cursor]?.t} ${s.plan[s.cursor]?.phase} pending=${!!s.pending} injury=${s.injury}`);
     if (s.modal) {
@@ -104,7 +105,11 @@ function play(style, seed) {
     const before = s.funds;
     windowMoves(s, style);
     if (s.funds < before) draws++;
-    if (style !== 'slacker') spend(s);
+    if (style !== 'slacker') {
+      spend(s);
+      // 有选词条的机会就用掉，每次选品质最高的（玩家一般也会这么选）
+      picks += E.autoPick(s);
+    }
     let a = choose(s, style);
     if (!E.canDo(s, a).ok) a = 'rest';
     if (!E.canDo(s, a).ok) throw new Error(`${style} #${seed}: 卡住了，既不能训练也不能休息`);
@@ -112,7 +117,7 @@ function play(style, seed) {
     check(s, `${style} #${seed}`);
   }
   const c = E.careerSummary(s);
-  return { ...c, injuries, drewCards: draws > 0, honors: s.honors.map((h) => h.name), team: s.team.kind, rank: s.rank, bySeason: s.history.map((h) => h.overall), worldsBySeason: s.history.map((h) => h.worlds), joinedAt: s.history.findIndex((h) => h.team !== '测试队'), cardCount: s.log.filter((l) => l.kind === 'gacha').length };
+  return { ...c, injuries, picks, drewCards: draws > 0, honors: s.honors.map((h) => h.name), team: s.team.kind, rank: s.rank, bySeason: s.history.map((h) => h.overall), worldsBySeason: s.history.map((h) => h.worlds), joinedAt: s.history.findIndex((h) => h.team !== '测试队'), cardCount: s.log.filter((l) => l.kind === 'gacha').length };
 }
 
 const report = {};
@@ -131,6 +136,7 @@ for (const style of STYLES) {
     最终在真实战队: `${rs.filter((r) => r.team === 'real').length} 局`,
     S3后实力: +avg(rs.map((r) => r.bySeason[0])).toFixed(1),
     S4后实力: +avg(rs.map((r) => r.bySeason[1])).toFixed(1),
+    平均选词条: +avg(rs.map((r) => r.picks)).toFixed(1),
     进过世界赛: `${rs.filter((r) => r.worldsBySeason.some((w) => w !== '未参赛' && w !== '—')).length} 局`,
     八强及以上次数: rs.reduce((a, r) => a + r.worldsBySeason.filter((w) => ['冠军', '亚军', '四强', '八强'].includes(w)).length, 0),
     抽过卡: `${rs.filter((r) => r.drewCards).length} 局`,

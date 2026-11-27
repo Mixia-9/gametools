@@ -4,12 +4,12 @@
 <div id="lol-pro" class="lol-pro"></div>
 
 <script>
-  import { ATTRS, POSITIONS, POS_ORDER, REGIONS, TRAITS, type Attr, type Position, type ProPlayer, type Region } from '../../games/lol/data';
+  import { ATTRS, POSITIONS, POS_ORDER, QUALITY, REGIONS, TRAITS, type Attr, type Position, type ProPlayer, type Region } from '../../games/lol/data';
   import * as E from '../../games/lol/engine';
 
   type GameState = E.GameState;
   type Ui = {
-    view: 'main' | 'teams' | 'gacha';
+    view: 'main' | 'teams' | 'gacha' | 'pick';
     pool: E.Pool;
     last: ProPlayer[];
     notice: string;
@@ -43,6 +43,8 @@
     'border-violet-500 text-violet-700 dark:text-violet-400',
     'border-amber-400 text-amber-600 dark:text-amber-400',
   ];
+  /** 词条品质的颜色：借用稀有度的配色（普通 / 稀有 / 史诗 / 传说） */
+  const QUALITY_CLS = [RARITY_CLS[0], RARITY_CLS[1], RARITY_CLS[3], RARITY_CLS[4]];
   const LOG_CLS: Record<E.LogEntry['kind'], string> = {
     info: 'text-ink-muted',
     good: 'text-emerald-600 dark:text-emerald-400',
@@ -121,7 +123,7 @@
           <div class="mt-1 grid grid-cols-5 gap-2">
             ${POSITIONS.map((p) => `<button type="button" data-pick="pos" data-v="${p.id}" title="${p.weights ? Object.entries(p.weights).sort((a, b) => Number(b[1]) - Number(a[1])).slice(0, 2).map(([k]) => ATTRS.find((a) => a.id === k)!.name).join('、') + '最重要' : ''}" class="pick rounded-lg border px-2 py-2 text-sm transition ${ui.pick.pos === p.id ? 'border-violet-500 bg-violet-500/10 font-semibold text-ink' : 'border-edge text-ink-muted hover:border-violet-500/50'}">${p.name}</button>`).join('')}
           </div>
-          <p class="mt-4 text-sm font-semibold">开局词条（选一个）</p>
+          <p class="mt-4 text-sm font-semibold">开局词条（选一个）<span class="ml-1.5 text-xs font-normal text-ink-faint">之后每加 ${E.PICK_EVERY} 点属性，还能再选一个</span></p>
           <div class="mt-1 grid gap-2">
             ${TRAITS.filter((t) => t.start).map(
               (t) => `<button type="button" data-pick="trait" data-v="${t.id}" class="pick rounded-lg border px-3 py-2 text-left transition ${ui.pick.trait === t.id ? 'border-violet-500 bg-violet-500/10' : 'border-edge hover:border-violet-500/50'}"><b class="text-ink">${t.name}</b><span class="block text-xs text-ink-muted">${t.desc}</span></button>`
@@ -168,7 +170,7 @@
       `<div class="grid gap-2 sm:grid-cols-2">
         ${E.ACTIONS.map((a) => {
           const c = E.canDo(st, a.id);
-          const cost = a.id === 'rank' && st.traits.includes('grinder') ? a.cost - 5 : a.cost;
+          const cost = E.costOf(st, a.id);
           return `<div class="rounded-lg border border-edge p-3 ${c.ok ? '' : 'opacity-50'}">
             <div class="flex items-baseline justify-between"><b>${a.name}</b><span class="text-xs text-ink-faint">体力 −${cost}</span></div>
             <p class="mt-0.5 text-xs text-ink-muted">${a.id === 'rank' ? `排位上分，赚一点资金` : a.desc}</p>
@@ -287,7 +289,7 @@
       `属性 · 可用训练点 <span class="text-violet-600 dark:text-violet-400">${st.tp}</span>`,
       `<dl class="space-y-2.5">${ATTRS.map((a) => {
         const v = st.attrs[a.id];
-        const cost = E.pointCost(v);
+        const cost = E.pointCostFor(st, a.id);
         const can = v < 99 && st.tp >= cost;
         return `<div class="flex items-center gap-3">
           <dt class="w-14 shrink-0 text-sm font-semibold" title="${esc(a.desc)}">${a.name}<span class="ml-1 text-[11px] font-normal text-ink-faint">${Math.round(w[a.id] * 100)}%</span></dt>
@@ -299,21 +301,48 @@
     );
   }
 
+  /** 词条卡：有机会选的时候放一个入口；下面按拿到的顺序倒着列，新拿的在最上面 */
   function traitsCard(st: GameState): string {
+    const owed = st.traitPicks;
+    const done = st.pointsAdded % E.PICK_EVERY;
+    const chip = (t: (typeof TRAITS)[number]) =>
+      t.pick && t.quality != null
+        ? `<span class="rounded border px-1.5 py-0.5 text-[11px] font-semibold ${QUALITY_CLS[t.quality]}">${QUALITY[t.quality].name}</span>`
+        : `<span class="rounded border px-1.5 py-0.5 text-[11px] font-semibold ${t.start ? RARITY_CLS[2] : t.bad ? 'border-red-300 text-red-600 dark:border-red-500/50 dark:text-red-400' : 'border-edge text-ink-faint'}">${t.start ? '开局' : t.bad ? '隐患' : '达成'}</span>`;
     return card(
       `词条 · ${st.traits.length}`,
-      `<ul class="space-y-2">${st.traits.map((id) => {
+      `${
+        owed > 0
+          ? `<button type="button" data-act="pickOpen" class="w-full rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-500">选择新词条（${owed}）</button>`
+          : `<p class="text-xs text-ink-faint">再加 ${E.PICK_EVERY - done} 点属性，可以选一个新词条。</p>${bar(done, E.PICK_EVERY, 'bg-violet-500')}`
+      }
+      <ul class="mt-3 space-y-2">${[...st.traits].reverse().map((id) => {
         const t = TRAITS.find((x) => x.id === id);
-        return t ? `<li class="text-sm"><b class="${t.bad ? 'text-red-600 dark:text-red-400' : 'text-ink'}">${t.name}</b><span class="text-ink-muted">　${t.desc}</span></li>` : '';
-      }).join('')}</ul>`
+        return t ? `<li class="text-sm"><span class="mb-0.5 flex items-center gap-1.5">${chip(t)}<b class="${t.bad ? 'text-red-600 dark:text-red-400' : 'text-ink'}">${t.name}</b></span><span class="block text-xs leading-relaxed text-ink-muted">${t.desc}</span></li>` : '';
+      }).join('')}</ul>
+      <p class="mt-3 text-[11px] leading-relaxed text-ink-faint">同类加成叠起来，不会超过其中最强的那一个；胜率类的加起来最多 +${Math.round(E.PICK_WIN_CAP * 100)}%。</p>`
+    );
+  }
+
+  /** 选词条：三个选项，点一个就选走 */
+  function pickPanel(st: GameState): string {
+    const offer = E.traitOptions(st);
+    return card(
+      `选择词条 · 还可以选 ${st.traitPicks} 次`,
+      `<p class="text-sm text-ink-muted">三选一。品质越高越难遇到，效果也越强；连续 ${E.EPIC_PITY} 次没出史诗以上，下一次必出。</p>
+      <div class="mt-3 grid gap-2 sm:grid-cols-3">${offer.map(
+        (t) => `<button type="button" data-act="pick" data-v="${t.id}" class="rounded-xl border bg-page p-3 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${QUALITY_CLS[t.quality ?? 0]}"><span class="text-[11px] font-semibold">${QUALITY[t.quality ?? 0].name}</span><b class="mt-0.5 block text-base text-ink">${t.name}</b><span class="mt-1 block text-sm leading-relaxed text-ink-muted">${t.desc}</span></button>`
+      ).join('')}</div>
+      <button type="button" data-act="pickLater" class="mt-4 text-sm text-violet-600 hover:underline dark:text-violet-400">稍后再选</button>`
     );
   }
 
   function teamCard(st: GameState): string {
     const win = E.isWindow(st);
     const own = st.team.kind === 'own';
+    const lead = E.traitFx(st).all.lead;
     return card(
-      `我的战队${st.team.coord > 0 ? ` · 磨合 +${num(st.team.coord)}` : ''}`,
+      `我的战队${st.team.coord > 0 ? ` · 磨合 +${num(st.team.coord)}` : ''}${lead > 0 ? ` · 指挥 +${num(lead)}` : ''}`,
       `${teamHead(st, st.team.id)}<div class="mt-1">${rosterOf(st, st.team.id).map(playerRow).join('')}</div>
       <div class="mt-3 flex flex-wrap gap-2">
         <button type="button" data-act="panel" data-v="teams" ${win ? '' : 'disabled'} class="${BTN}">${own ? '改名 / 申请加入其他战队' : '申请转会'}</button>
@@ -372,7 +401,7 @@
       `抽卡 · 资金 <span class="text-amber-600 dark:text-amber-400">${st.funds}</span> · 保底进度 ${st.pity}/10`,
       `<div class="flex flex-wrap items-center gap-2">
         ${(['home', 'away'] as E.Pool[]).map((p) => `<button type="button" data-act="pool" data-v="${p}" class="${BTN} ${ui.pool === p ? '!border-violet-500 bg-violet-500/10' : ''}">${p === 'home' ? '本赛区' : '外援'}</button>`).join('')}
-        <span class="ml-auto text-xs text-ink-faint">非卖品抽不到 · 首发外援最多两人</span>
+        <span class="ml-auto text-xs text-ink-faint">非卖品抽不到 · 首发外援最多${E.importLimit(st) === 2 ? '两人' : `${E.importLimit(st)} 人`}</span>
       </div>
       <p class="mt-2 text-xs text-ink-muted">卡池里现有 ${pool.length} 名选手：${tiers.map((r) => `${r.name} ${r.n}`).join(' · ')}</p>
       <div class="mt-3 flex flex-wrap gap-2">
@@ -453,7 +482,7 @@
   function render(): void {
     if (!s) root.innerHTML = createScreen();
     else if (s.screen === 'careerEnd') root.innerHTML = `<div class="mx-auto max-w-2xl">${endScreen(s)}</div>`;
-    else if (ui.view !== 'main') root.innerHTML = `<div class="mx-auto max-w-3xl">${noticeBlock()}${ui.view === 'teams' ? teamsPanel(s) : gachaPanel(s)}</div>`;
+    else if (ui.view !== 'main') root.innerHTML = `<div class="mx-auto max-w-3xl">${noticeBlock()}${ui.view === 'teams' ? teamsPanel(s) : ui.view === 'pick' ? pickPanel(s) : gachaPanel(s)}</div>`;
     else root.innerHTML = mainScreen(s);
   }
 
@@ -496,6 +525,20 @@
           break;
         case 'point':
           E.addPoint(s, v as Attr);
+          // 加满了一次，直接进入选词条
+          if (ui.view === 'main' && s.traitPicks > 0) ui.view = 'pick';
+          break;
+        case 'pickOpen':
+          ui.view = 'pick';
+          break;
+        case 'pick':
+          if (E.pickTrait(s, v)) {
+            ui.last = [];
+            if (s.traitPicks <= 0) ui.view = 'main';
+          }
+          break;
+        case 'pickLater':
+          ui.view = 'main';
           break;
         case 'play':
           E.playPending(s);

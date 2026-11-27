@@ -1,4 +1,4 @@
-// 「重生之我是英雄联盟职业选手」规则测试：数据完整性、非卖品、外援上限、英雄与赛季、赛前 BP、世界赛名单与赛制。
+// 「重生之我是英雄联盟职业选手」规则测试：数据完整性、非卖品、外援上限、英雄与赛季、赛前 BP、词条、世界赛名单与赛制。
 // 用法：node scripts/test-lol.mjs
 import { createServer } from 'vite';
 import { fileURLToPath } from 'node:url';
@@ -288,6 +288,412 @@ console.log('\n[赛前 BP]');
   check('完整生涯里每一局的 BP 都合法（数量、不重复、本赛季英雄池、对应位置）', bad === 0, badMsgs.join('；'));
   check('同一场系列赛里，蓝色方每局轮换', multi > 0 && alternates === multi, `${alternates} / ${multi}`);
   check('常规赛、季后赛半决赛和决赛、世界赛小组赛、八强、四强、决赛都有 BP', allKinds.every((k) => kinds.has(k)), allKinds.filter((k) => !kinds.has(k)).join(','));
+}
+
+console.log('\n[词条]');
+{
+  const all = D.TRAITS;
+  const pickable = all.filter((t) => t.pick);
+  const byQ = (q) => pickable.filter((t) => t.quality === q);
+  console.log(`       共 ${all.length} 个词条：开局 ${all.filter((t) => t.start).length} 个，加点时可选 ${pickable.length} 个（${D.QUALITY.map((q, i) => `${q.name} ${byQ(i).length}`).join('、')}），达成条件获得 ${all.filter((t) => t.hidden).length} 个`);
+  check('可选词条数量：普通 ≥ 16、稀有 ≥ 16、史诗 ≥ 12、传说 ≥ 8', byQ(0).length >= 16 && byQ(1).length >= 16 && byQ(2).length >= 12 && byQ(3).length >= 8, D.QUALITY.map((q, i) => `${q.name} ${byQ(i).length}`).join('、'));
+  check('词条 ID 不重复；开局词条和达成条件获得的词条不会被选到', new Set(all.map((t) => t.id)).size === all.length && all.filter((t) => t.start || t.hidden).every((t) => !t.pick));
+  check('每个词条都有效果，效果里的数值都不是 0', all.every((t) => t.fx && Object.entries(t.fx).some(([k, v]) => (k === 'grit' ? v === true : v !== 0))));
+
+  // 描述里写的数值必须和效果一致
+  const PCT = ['tp', 'matchTp', 'cost', 'rank', 'rankLoss', 'recover', 'injury', 'funds', 'coord', 'luck', 'league', 'elim', 'worlds', 'decider', 'firstGame', 'bo1', 'late', 'ahead', 'behind', 'underdog', 'blue', 'red'];
+  const shown = (k, v) => (PCT.includes(k) ? `${Math.round(Math.abs(v) * 100)}%` : `${Math.abs(v)}`);
+  const mismatch = [];
+  for (const t of all) {
+    for (const [k, v] of Object.entries(t.fx)) {
+      if (k !== 'grit' && !t.desc.includes(shown(k, v))) mismatch.push(`${t.name}：${k} = ${v}，描述是「${t.desc}」`);
+    }
+  }
+  check('每个词条的描述里都写明了效果数值', mismatch.length === 0, mismatch.slice(0, 4).join('；'));
+
+  const mk = (pos = 'mid', trait = 'genius', extra = [], seed = 4) => {
+    const s = E.createGame({ name: '测试', region: 'LPL', pos, trait, teamName: '测试队', seed });
+    E.closeSeasonStart(s);
+    s.traits.push(...extra);
+    E.refreshStamina(s);
+    return s;
+  };
+  const near = (a, b) => Math.abs(a - b) < 1e-9;
+
+  // 汇总：乘法相乘、加法相加；选来的词条单独算一份
+  {
+    const f = E.traitFx(mk('mid', 'genius', ['notebook', 'coach', 'lightpack', 'conditioning']));
+    check(
+      '效果汇总：乘法的相乘（训练点 1.25 × 1.05 × 1.1）、加法的相加（体力上限 6 + 15），开局和选来的分开算',
+      near(f.all.tp, 1.25 * 1.05 * 1.1) && near(f.base.tp, 1.25) && near(f.pick.tp, 1.05 * 1.1) && f.all.stamina === 21 && f.base.stamina === 0 && f.pick.stamina === 21
+    );
+    const z = E.traitFx(mk('mid', ''));
+    check('没有任何加成词条时，汇总结果就是“不变”', z.all.tp === 1 && z.all.rank === 1 && z.all.stamina === 0 && z.all.elim === 0 && !z.all.grit);
+  }
+
+  // 每加 PICK_EVERY（20）点属性多一次选词条
+  {
+    const s = mk('adc', 'genius', [], 3);
+    s.tp = 1000;
+    const every = E.PICK_EVERY;
+    const earned = [];
+    for (let i = 1; i <= every * 2 + 5; i++) {
+      E.addPoint(s, 'reaction');
+      if (s.traitPicks > earned.length) earned.push(i);
+    }
+    check(`每加 ${every} 点属性，多一次选词条的机会（加到第 ${every}、${every * 2} 点时各一次）`, every === 20 && earned.join() === `${every},${every * 2}` && s.pointsAdded === every * 2 + 5 && s.traitPicks === 2, `第 ${earned.join('、')} 点`);
+    const offer = E.traitOptions(s);
+    check('一次给出 3 个不重复、自己还没有、自己这个位置能选的词条', offer.length === E.OFFER_SIZE && new Set(offer.map((t) => t.id)).size === offer.length && offer.every((t) => t.pick && !s.traits.includes(t.id) && (!t.pos || t.pos.includes(s.pos))), offer.map((t) => t.name).join('、'));
+    check('选项存进了状态：再要一次还是同样三个', JSON.stringify(E.traitOptions(s).map((t) => t.id)) === JSON.stringify(s.traitOffer) && JSON.stringify(s.traitOffer) === JSON.stringify(offer.map((t) => t.id)));
+    const count = s.traits.length;
+    check('不在选项里的词条选不了（开局的、达成条件的、乱写的 ID）', !E.pickTrait(s, 'clutch') && !E.pickTrait(s, 'champion') && !E.pickTrait(s, '不存在') && s.traits.length === count && s.traitPicks === 2);
+    const pick = offer[0].id;
+    check(`选一个（${offer[0].name}）：词条到手，机会少一次，下一次的选项重新摇`, E.pickTrait(s, pick) && s.traits.includes(pick) && s.traitPicks === 1 && s.traitOffer === null && E.traitOptions(s).every((t) => t.id !== pick));
+    const streak = (() => {
+      const t = mk('mid', 'genius', [], 6);
+      t.traitPicks = 1;
+      t.traitOffer = ['closer'];
+      E.pickTrait(t, 'closer');
+      const afterEpic = t.pickStreak;
+      t.traitPicks = 1;
+      t.traitOffer = ['warmup'];
+      E.pickTrait(t, 'warmup');
+      return [afterEpic, t.pickStreak];
+    })();
+    check('出史诗以上时保底计数清零，否则加一', streak[0] === 0 && streak[1] === 1, streak.join(' / '));
+    s.traitPicks = 0;
+    check('没有机会时不出选项，也选不了', E.traitOptions(s).length === 0 && !E.pickTrait(s, pickable[0].id));
+  }
+
+  // 位置专属的词条只会在对应位置出现
+  {
+    const seen = new Set();
+    for (const pos of D.POS_ORDER) {
+      const s = mk(pos, 'genius', [], 5);
+      for (let i = 0; i < 200; i++) {
+        s.traits = ['genius'];
+        s.traitOffer = null;
+        s.traitPicks = 1;
+        for (const t of E.traitOptions(s)) if (t.pos) seen.add(`${t.id}:${pos}`);
+      }
+    }
+    check('位置专属的词条只会在对应位置的选项里出现（五个位置各有一个）', seen.size === 5 && [...seen].every((x) => D.TRAITS.find((t) => t.id === x.split(':')[0]).pos.includes(x.split(':')[1])), [...seen].join(' '));
+  }
+
+  // 品质分布和保底
+  {
+    const s = mk('mid', 'genius', [], 9);
+    const n = 800;
+    const got = [0, 0, 0, 0];
+    let due = 0;
+    let hit = 0;
+    for (let i = 0; i < n; i++) {
+      s.traits = ['genius'];
+      s.traitOffer = null;
+      s.traitPicks = 1;
+      const owed = s.pickStreak >= E.EPIC_PITY;
+      const offer = E.traitOptions(s);
+      if (owed) {
+        due++;
+        if (offer.some((t) => t.quality >= 2)) hit++;
+      }
+      got[offer[0].quality]++;
+      E.pickTrait(s, offer[0].id);
+    }
+    const share = got.map((x) => x / n);
+    console.log(`       ${n} 次里选项第一个位置的品质：${D.QUALITY.map((q, i) => `${q.name} ${(share[i] * 100).toFixed(1)}%`).join('、')}；保底触发 ${due} 次，每次都出了史诗以上`);
+    check('品质大体按权重出：普通最多、传说最少且不到一成半', share[0] > 0.33 && share[0] < 0.5 && share[1] > 0.2 && share[1] < 0.34 && share[2] > 0.18 && share[2] < 0.32 && share[3] > 0.02 && share[3] < 0.15, share.map((x) => x.toFixed(3)).join(' '));
+    check(`连续 ${E.EPIC_PITY} 次没出史诗以上，下一次必出`, E.EPIC_PITY === 5 && due >= 10 && hit === due, `${hit} / ${due}`);
+  }
+
+  // 选到时立刻生效的
+  {
+    const s = mk('mid', 'genius', [], 2);
+    const give = (id) => {
+      s.traitPicks = 1;
+      s.traitOffer = [id];
+      return E.pickTrait(s, id);
+    };
+    s.tp = 0;
+    const a = give('epiphany');
+    const tp = s.tp;
+    s.funds = 0;
+    const b = give('windfall');
+    const funds = s.funds;
+    const max = s.maxStamina;
+    s.stamina = 50;
+    const c = give('conditioning');
+    check('「顿悟」立刻给 30 训练点，「天降横财」立刻给 200 资金', a && b && tp === 30 && funds === 200, `${tp} / ${funds}`);
+    check('「体能特训」：体力上限 +15，当前的体力也跟着 +15', c && s.maxStamina === max + 15 && s.stamina === 65, `${s.maxStamina} / ${s.stamina}`);
+    const d = give('immortal');
+    check('「不坏之身」：体力上限再 +30，和前面的 +15 一起碰到 +40 的上限', d && s.maxStamina === 140, String(s.maxStamina));
+  }
+
+  // 各项效果确实被引擎读到了（数值能直接算出来的，逐个核对）
+  {
+    const at = (v, extra) => {
+      const s = mk('mid', 'genius', extra);
+      s.attrs.reaction = v;
+      return s;
+    };
+    check('加点的花费按词条打折：原价 10 → 会挑外设 9、举一反三 9、高效学习 8、点石成金 7', E.pointCostFor(at(84), 'reaction') === 10 && E.pointCostFor(at(84, ['bargain']), 'reaction') === 9 && E.pointCostFor(at(84, ['quickstudy']), 'reaction') === 9 && E.pointCostFor(at(84, ['efficient']), 'reaction') === 8 && E.pointCostFor(at(84, ['goldhand']), 'reaction') === 7);
+    const paid = (extra) => {
+      const s = at(84, extra);
+      s.tp = 100;
+      E.addPoint(s, 'reaction');
+      return 100 - s.tp;
+    };
+    check('实际扣的训练点和显示的花费一致', paid([]) === 10 && paid(['goldhand']) === 7 && paid(['bargain']) === 9);
+    check('排位消耗的体力：排位狂人 10（原来 15）；作息规律让训练赛 23、加练 38（原来 25、40）', E.costOf(mk('mid', 'grinder'), 'rank') === 10 && E.costOf(mk(), 'rank') === 15 && E.costOf(mk('mid', 'genius', ['earlybird']), 'scrim') === 23 && E.costOf(mk('mid', 'genius', ['earlybird']), 'overtrain') === 38 && E.costOf(mk('mid', 'genius', ['earlybird']), 'rest') === 0);
+    check('休息恢复的体力：45 → 热身习惯 52、私人理疗师 59、永动机 63', E.restRecover(mk()) === 45 && E.restRecover(mk('mid', 'genius', ['warmup'])) === 52 && E.restRecover(mk('mid', 'genius', ['physio'])) === 59 && E.restRecover(mk('mid', 'genius', ['perpetual'])) === 63);
+    const low = (extra, trait = '') => {
+      const s = mk('mid', trait, extra);
+      s.stamina = 20;
+      return E.trainGain(s);
+    };
+    check('体力很低时训练收益打折（×0.6）；「铁血意志」只打很轻的折（×0.85）', near(low([]), 0.6) && near(low([], 'genius'), 1.25 * 0.6) && near(low(['ironwill'], 'genius'), 1.25 * 0.85));
+    const risk = (stamina, extra, trait = 'genius') => {
+      const s = mk('mid', trait, extra);
+      s.stamina = stamina;
+      return E.injuryRisk(s);
+    };
+    check('加练受伤的概率：18%（体力很低 30%）→ 拉伸狂魔 ×0.75、不坏之身 ×0.2；开局铁人 ×0.1', near(risk(50, []), 0.18) && near(risk(10, []), 0.3) && near(risk(50, ['stretching']), 0.135) && near(risk(10, ['immortal']), 0.06) && near(risk(10, [], 'iron'), 0.03));
+    check('体力上限：轻装上阵 106、铁血意志 125、铁人 140', mk('mid', 'genius', ['lightpack']).maxStamina === 106 && mk('mid', 'genius', ['ironwill']).maxStamina === 125 && mk('mid', 'iron').maxStamina === 140);
+    const rival = mk();
+    const rivalId = E.leagueIds(rival).find((id) => id !== 'own');
+    check('场上指挥 / 团队大脑：自己队伍的实力 +1 / +2；对手的实力不变', near(E.teamRating(mk('mid', 'genius', ['iglcalls']), 'own') - E.teamRating(mk(), 'own'), 1) && near(E.teamRating(mk('mid', 'genius', ['teambrain']), 'own') - E.teamRating(mk(), 'own'), 2) && near(E.teamRating(mk('mid', 'genius', ['teambrain']), rivalId), E.teamRating(rival, rivalId)));
+    check('国际纵队：首发外援上限 2 → 3', E.importLimit(mk()) === 2 && E.importLimit(mk('mid', 'genius', ['meltingpot'])) === 3);
+    check('欧皇附体：抽卡时【核心】以上的权重放大（没有词条时和原来一模一样）', JSON.stringify(E.drawWeights(mk())) === JSON.stringify([28, 32, 22, 13, 5]) && E.drawWeights(mk('mid', 'genius', ['luckycharm'])).every((x, i) => near(x, [28, 32, 22, 13, 5][i] * (i >= 2 ? 1.4 : 1))));
+    // 人脉广：战队对你有意向的实力门槛降低
+    const ids = E.leagueIds(mk()).filter((id) => id !== 'own');
+    const need = (extra, id) => Number((E.interest(mk('mid', 'genius', extra), id).why.match(/达到 (\d+)/) || [])[1]);
+    const gate = ids.find((id) => need([], id) > 0 && need(['connections'], id) > 0);
+    check('人脉广：战队要求的综合实力门槛 −4', gate !== undefined && need([], gate) - need(['connections'], gate) === 4, gate ? `${need([], gate)} → ${need(['connections'], gate)}` : '没有战队卡在实力门槛上');
+  }
+
+  // 胜率类：traitWin 按局面取用；选来的词条加起来有上限，开局和自动获得的不受限
+  {
+    const none = { deciding: false, first: false, late: false, ahead: false, behind: false, underdog: false, blue: false };
+    const m = (kind, elim = false, bo = 3) => ({ kind, split: null, label: '测试', opp: 'omg', bo, elim });
+    const w = (extra, kind, ctx = {}, elim = false, bo = 3) => E.traitWin(mk('mid', 'genius', extra), m(kind, elim, bo), { ...none, ...ctx });
+    check('没有词条时胜率加成为 0', w([], 'league') === 0 && w([], 'qf', { deciding: true }, true, 5) === 0);
+    check('蓝方熟练 / 红方也不怵：只在自己对应的那一边生效', near(w(['bluemain'], 'league', { blue: true }), 0.02) && w(['bluemain'], 'league', { blue: false }) === 0 && near(w(['redmain'], 'league', { blue: false }), 0.02) && w(['redmain'], 'league', { blue: true }) === 0);
+    check('常规赛很稳：只在联赛常规赛生效', near(w(['regular'], 'league'), 0.02) && w(['regular'], 'group') === 0 && w(['regular'], 'semi', {}, true, 5) === 0);
+    check('关键先生：只在淘汰赛生效', near(w(['biggame'], 'final', {}, true, 5), 0.03) && w(['biggame'], 'league') === 0);
+    check('为世界赛而生：世界赛小组赛和淘汰赛都生效，联赛不生效', near(w(['bornforworlds'], 'group', {}, false, 1), 0.05) && near(w(['bornforworlds'], 'wfinal', {}, true, 5), 0.05) && w(['bornforworlds'], 'league') === 0);
+    check('开门红 / BO1 选手 / 老将的经验 / 乘胜追击 / 知耻后勇 / 以下克上：各看各的局面', near(w(['opener'], 'league', { first: true }), 0.02) && w(['opener'], 'league', { first: false }) === 0 && near(w(['bo1player'], 'group', {}, false, 1), 0.03) && w(['bo1player'], 'league') === 0 && near(w(['veteran'], 'final', { late: true }, true, 5), 0.03) && w(['veteran'], 'final', { late: false }, true, 5) === 0 && near(w(['momentum'], 'league', { ahead: true }), 0.03) && w(['momentum'], 'league', { behind: true }) === 0 && near(w(['comeback'], 'league', { behind: true }), 0.04) && w(['comeback'], 'league', { ahead: true }) === 0 && near(w(['giantkiller'], 'league', { underdog: true }), 0.04) && w(['giantkiller'], 'league', { underdog: false }) === 0);
+    check('开局的大心脏 + 重生者：淘汰赛决胜局 +16%，不受选来词条的上限限制', near(E.traitWin(mk('mid', 'clutch', ['reborn']), m('wfinal', true, 5), { ...none, deciding: true }), 0.16));
+    check('选来的词条给的胜率加起来最多 +8%', near(w(['closer'], 'wfinal', { deciding: true }, true, 5), 0.08) && near(w(['closer', 'regular', 'bluemain', 'redmain', 'opener', 'bo1player', 'worldclass', 'unshakable', 'icecold'], 'wfinal', { deciding: true, first: true, underdog: true, behind: true, blue: true }, true, 5), 0.08));
+    check('世界冠军（达成条件获得）：淘汰赛 +3%，并且可以和选来的 +8% 叠加', near(E.traitWin(mk('mid', 'genius', ['worldchamp', 'closer']), m('qf', true, 5), none), 0.03 + 0.05));
+    // 叠加上限：经济类的词条选得再多，也不会无限叠
+    const stacked = E.traitFx(mk('mid', 'genius', ['notebook', 'coach', 'system', 'chosen', 'bargain', 'quickstudy', 'efficient', 'goldhand', 'conditioning', 'lightpack', 'ironwill', 'immortal', 'perpetual', 'teambrain', 'iglcalls', 'allround', 'thrifty', 'patron', 'windfall', 'rankdemon', 'easygoing', 'physio']));
+    check(
+      '叠加上限：同类加成叠起来不超过其中最强的那一个（训练点 ≤ +25%、加点 ≤ 便宜 30%、队伍实力 ≤ +3），体力上限最多 +40',
+      near(stacked.pick.tp, 1.25) && near(stacked.pick.cost, 0.7) && stacked.pick.stamina === 40 && stacked.pick.lead === 3 && near(stacked.pick.rank, 1.35) && near(stacked.pick.funds, 1.6) && near(stacked.pick.injury, 0.2) && near(stacked.all.tp, 1.25 * 1.25) && near(stacked.base.tp, 1.25),
+      `${stacked.pick.tp} / ${stacked.pick.cost} / ${stacked.pick.stamina} / ${stacked.pick.lead}`
+    );
+    const cost84 = (extra) => {
+      const s = mk('mid', 'genius', extra);
+      s.attrs.reaction = 84;
+      return E.pointCostFor(s, 'reaction');
+    };
+    check('叠加永远不会比单独拿最强的那一个更差，也不会更好：只拿「点石成金」和再叠上别的折扣，花费一样', cost84(['goldhand']) === cost84(['goldhand', 'efficient', 'quickstudy', 'bargain']) && cost84(['goldhand']) < cost84(['bargain']));
+    check('上限只管选来的词条：开局的铁人 + 选来的体力词条，开局那部分不会被削', mk('mid', 'iron', ['conditioning', 'lightpack']).maxStamina === 140 + 21 && mk('mid', 'iron', ['conditioning', 'lightpack', 'ironwill', 'immortal', 'perpetual']).maxStamina === 140 + 40);
+  }
+
+  // 成对对比：同一种子跑两遍，一遍带词条、一遍不带
+  {
+    const pair = (extra, run) => {
+      const a = mk('mid', 'genius', [], 31);
+      const b = mk('mid', 'genius', extra, 31);
+      return [run(a), run(b)];
+    };
+    // 保证接下来这一天能训练：路上遇到比赛就打完
+    const ready = (s) => {
+      for (let i = 0; i < 30 && !E.canTrain(s); i++) {
+        if (s.modal) E.closeSeasonStart(s);
+        else if (s.result) E.continueAfterResult(s);
+        else if (s.pending) E.playPending(s);
+        else break;
+      }
+    };
+    const fresh = (s) => {
+      ready(s);
+      s.stamina = 100;
+      s.injury = 0;
+      s.traits = s.traits.filter((id) => id !== 'injury');
+    };
+    const scrimTp = (s) => {
+      let tp = 0;
+      for (let i = 0; i < 80; i++) {
+        fresh(s);
+        if (!E.canTrain(s)) break;
+        const before = s.tp;
+        E.act(s, 'scrim');
+        tp += s.tp - before;
+      }
+      return tp;
+    };
+    const [tpA, tpB] = pair(['notebook'], scrimTp);
+    check(`复盘笔记（训练点 +5%）：80 天训练赛的训练点 ${tpA} → ${tpB}`, tpA > 200 && tpB - tpA > tpA * 0.03 && tpB - tpA < tpA * 0.07, `${tpA} → ${tpB}`);
+    const rankFunds = (s) => {
+      let sum = 0;
+      for (let i = 0; i < 80; i++) {
+        fresh(s);
+        if (!E.canTrain(s)) break;
+        const before = s.funds;
+        E.act(s, 'rank');
+        sum += s.funds - before;
+      }
+      return sum;
+    };
+    const [fA, fB] = pair(['thrifty'], rankFunds);
+    check(`省吃俭用（资金 +10%）：80 天排位的资金 ${fA} → ${fB}`, fB > fA && fB - fA <= 120, `${fA} → ${fB}`);
+    const rankPoints = (s) => {
+      let gain = 0;
+      let loss = 0;
+      for (let i = 0; i < 80; i++) {
+        fresh(s);
+        if (!E.canTrain(s)) break;
+        s.rank = 100;
+        E.act(s, 'rank');
+        const d = s.rank - 100;
+        if (d > 0) gain += d;
+        else loss -= d;
+      }
+      return [gain, loss];
+    };
+    const [rA, rB] = pair(['duoqueue'], rankPoints);
+    check(`固定排位搭子（上分 +10%）：80 天排位加的分 ${rA[0]} → ${rB[0]}，掉的分不变（${rA[1]} / ${rB[1]}）`, rA[0] > 0 && rB[0] > rA[0] && rB[1] === rA[1], `${rA.join('/')} → ${rB.join('/')}`);
+    const x = rankPoints(mk('mid', 'genius', [], 12));
+    const y = rankPoints(mk('mid', 'grinder', [], 12));
+    check(`开局的排位狂人：加分 ×1.4（${x[0]} → ${y[0]}），掉分不再被放大（${x[1]} / ${y[1]}）`, y[0] > x[0] * 1.3 && y[1] === x[1], `${x.join('/')} → ${y.join('/')}`);
+    const coord = (s) => {
+      for (let i = 0; i < 80; i++) {
+        fresh(s);
+        if (!E.canTrain(s)) break;
+        s.team.coord = 0;
+        E.act(s, 'scrim');
+      }
+      return s.team.coord;
+    };
+    const [cA, cB] = pair(['easygoing'], coord);
+    check(`好相处（磨合增长 +20%）：连续训练赛后的磨合度 ${cA} → ${cB}`, cB > cA, `${cA} → ${cB}`);
+    const restTp = (s) => {
+      s.tp = 0;
+      E.act(s, 'rest');
+      return s.tp;
+    };
+    const [hA, hB] = pair(['homework'], restTp);
+    check(`带着问题休息：休息一天的训练点 ${hA} → ${hB}`, hA === 0 && hB === 2, `${hA} → ${hB}`);
+    const restStamina = (s) => {
+      s.stamina = 0;
+      E.act(s, 'rest');
+      return s.stamina;
+    };
+    const [sA, sB] = pair(['warmup'], restStamina);
+    check(`热身习惯：休息一天恢复的体力 ${sA} → ${sB}`, sA === 45 && sB === 52, `${sA} → ${sB}`);
+    const days = (extra) => {
+      const s = mk('mid', 'genius', extra, 17);
+      for (let i = 0; i < 2000 && s.injury === 0; i++) {
+        // 这里不能把伤清掉：要等它真的受伤
+        // 加练要 40 体力；练完只剩 5 点，正处在最容易受伤的状态
+        ready(s);
+        if (!E.canTrain(s)) break;
+        s.stamina = 45;
+        E.act(s, 'overtrain');
+      }
+      return s.injury;
+    };
+    const dA = days([]);
+    const dB = days(['fastheal']);
+    check(`恢复得快：受伤后休战 ${dA} 天 → ${dB} 天`, dA === 8 && dB === 5, `${dA} → ${dB}`);
+  }
+
+  // 整条链路：选来的词条真的会改变比赛结果（同样的 40 段生涯，一边带满胜率词条）
+  {
+    const seasonWins = (extra, seeds) => {
+      let wins = 0;
+      for (const seed of seeds) {
+        const s = mk('mid', 'genius', extra, seed);
+        let guard = 0;
+        while (guard++ < 3000) {
+          const sp = s.split.spring;
+          if (sp && sp.played >= sp.schedule.length) break;
+          if (s.modal) E.closeSeasonStart(s);
+          else if (s.result) E.continueAfterResult(s);
+          else if (s.pending) E.playPending(s);
+          else if (s.injury > 0) E.restInjury(s);
+          else if (E.canTrain(s)) E.act(s, 'rest');
+          else break;
+        }
+        wins += s.split.spring.table.own.w;
+      }
+      return wins;
+    };
+    const seeds = Array.from({ length: 40 }, (_, i) => 100 + i);
+    const plain = seasonWins([], seeds);
+    const buffed = seasonWins(['regular', 'bluemain', 'redmain', 'opener', 'comeback', 'giantkiller'], seeds);
+    console.log(`       40 段生涯的春季常规赛（各 7 场）：不带词条赢 ${plain} 场，带满胜率词条赢 ${buffed} 场`);
+    check('带胜率词条的生涯，常规赛赢得更多', buffed > plain + 10, `${plain} → ${buffed}`);
+  }
+
+  // 完整生涯里机器人把能选的都选掉：每段“选的次数 = 加点数 ÷ 10”，选到的都合法
+  {
+    let careers = 0;
+    let picks = 0;
+    let bad = 0;
+    const quality = [0, 0, 0, 0];
+    const traitCounts = [];
+    for (let seed = 1; seed <= 12; seed++) {
+      const pos = ['top', 'jungle', 'mid', 'adc', 'support'][seed % 5];
+      const s = E.createGame({ name: '测试', region: 'LPL', pos, trait: ['reborn', 'genius', 'grinder', 'clutch', 'iron'][seed % 5], teamName: '测试队', seed });
+      const w = D.POSITIONS.find((p) => p.id === pos).weights;
+      let mine = 0;
+      let guard = 0;
+      while (s.screen === 'main' && guard++ < 80000) {
+        if (s.modal) E.closeSeasonStart(s);
+        else if (s.result) E.continueAfterResult(s);
+        else if (s.pending) E.playPending(s);
+        else if (s.injury > 0) E.restInjury(s);
+        else if (E.canTrain(s)) {
+          // 像正常玩家一样：有训练点就加到最划算的属性上，然后选词条
+          for (let i = 0; i < 200; i++) {
+            const best = Object.keys(w).sort((a, b) => w[b] / E.pointCostFor(s, b) - w[a] / E.pointCostFor(s, a))[0];
+            if (s.attrs[best] >= 96 || !E.addPoint(s, best)) break;
+          }
+          mine += E.autoPick(s);
+          E.act(s, E.canDo(s, 'scrim').ok ? 'scrim' : 'rest');
+        } else break;
+      }
+      careers++;
+      picks += mine;
+      // 每加 PICK_EVERY 点属性正好一次机会，机器人都用掉了
+      if (s.traitPicks !== 0 || mine !== Math.floor(s.pointsAdded / E.PICK_EVERY)) bad++;
+      for (const id of s.traits) {
+        const t = D.TRAITS.find((x) => x.id === id);
+        if (!t) bad++;
+        else if (t.pick) {
+          quality[t.quality]++;
+          if (t.pos && !t.pos.includes(s.pos)) bad++;
+        }
+      }
+      traitCounts.push(s.traits.length);
+    }
+    console.log(`       ${careers} 段生涯共选了 ${picks} 次；选到的品质：${D.QUALITY.map((q, i) => `${q.name} ${quality[i]}`).join('、')}；每段生涯最后的词条数：${traitCounts.join(' ')}`);
+    check('完整生涯里，每一段选词条的次数都正好等于加点数 ÷ 20，机会没有剩下', bad === 0 && picks > 0 && traitCounts.length === careers, `${careers} 段里有 ${bad} 处不对；共选了 ${picks} 次`);
+    check('选到的都是合法词条，位置专属的只出现在对应位置；四个品质都选到过', bad === 0 && quality.every((x) => x > 0), quality.join('/'));
+  }
+
+  // 旧存档：没有这些字段也能接着玩
+  {
+    const s = mk('mid', 'genius', [], 8);
+    for (const k of ['pointsAdded', 'traitPicks', 'traitOffer', 'pickStreak', 'tpCarry', 'fundsCarry']) delete s[k];
+    E.migrate(s);
+    s.tp = 1000;
+    for (let i = 0; i < E.PICK_EVERY; i++) E.addPoint(s, 'reaction');
+    check('旧存档补上默认值后照常积累加点、照常可选词条', s.pointsAdded === E.PICK_EVERY && s.traitPicks === 1 && s.pickStreak === 0 && s.tpCarry === 0 && s.fundsCarry === 0 && E.traitOptions(s).length === 3);
+  }
 }
 
 console.log('\n[世界赛]');

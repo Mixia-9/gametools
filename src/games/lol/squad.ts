@@ -2,7 +2,7 @@
  * 战队：赛季初加入一支真实战队，或者留在自己的战队里抽卡换人。
  */
 import { POS_ORDER, regionOfNat, type Position, type ProPlayer } from './data';
-import { cur, findPro, isWindow, log, overall, posName, ri, rnd, teamLabel, teamRating, type GameState, type TeamState } from './core';
+import { cur, findPro, fx, isWindow, log, overall, posName, ri, rnd, teamLabel, teamRating, type GameState, type TeamState } from './core';
 
 export type Pool = 'home' | 'away';
 
@@ -25,13 +25,22 @@ const RARITY_WEIGHT = [28, 32, 22, 13, 5];
 /** 保底：连续这么多抽没出核心以上，下一抽必出 */
 const PITY = 10;
 
+/** 这一抽各稀有度的权重：【核心】以上会被「欧皇附体」这类词条放大 */
+export function drawWeights(s: GameState): number[] {
+  const luck = fx(s).luck;
+  return RARITY_WEIGHT.map((x, k) => (k >= 2 ? x * (1 + luck) : x));
+}
+
+/** 自己战队首发里最多几个外援 */
+export const importLimit = (s: GameState) => 2 + fx(s).imports;
+
 export function interest(s: GameState, teamId: string): { ok: boolean; why: string } {
   const team = cur(s).byId[teamId];
   if (!team) return { ok: false, why: '这支队今年不在联赛里' };
   if (!isWindow(s)) return { ok: false, why: '只能在转会期换队' };
   const lock = team.roster[s.pos];
   if (lock?.locked) return { ok: false, why: `${lock.id} 是非卖品，这支队不招${posName(s.pos)}` };
-  const need = Math.round(teamRating(s, teamId) - 15);
+  const need = Math.round(teamRating(s, teamId) - 15 - fx(s).interest);
   if (overall(s) < need) return { ok: false, why: `需要综合实力达到 ${need}` };
   if (s.rank < 250) return { ok: false, why: '段位至少要到铂金' };
   return { ok: true, why: '' };
@@ -123,13 +132,15 @@ export function draw(s: GameState, pool: Pool, n = 1): ProPlayer[] {
     const all = poolOf(s, pool);
     if (!all.length) break;
     let roll = rnd(s) * 100;
+    const w = drawWeights(s);
+    roll = (roll / 100) * w.reduce((a, b) => a + b, 0);
     let tier = 0;
-    for (let k = RARITY_WEIGHT.length - 1; k >= 0; k--) {
-      if (roll < RARITY_WEIGHT[k]) {
+    for (let k = w.length - 1; k >= 0; k--) {
+      if (roll < w[k]) {
         tier = k;
         break;
       }
-      roll -= RARITY_WEIGHT[k];
+      roll -= w[k];
     }
     // 保底
     s.pity = tier >= 2 ? 0 : s.pity + 1;
@@ -169,7 +180,7 @@ export function setMember(s: GameState, pos: Position, playerId: string | null):
   if (!pro || pro.pos !== pos || !s.bench.includes(playerId)) return { ok: false, why: '这名选手不在这个位置上' };
   const others = POS_ORDER.filter((p) => p !== pos && s.team.members[p]);
   const importsAfter = others.filter((p) => regionOfNat(findPro(s, s.team.members[p]!)!.nat) !== s.region).length + (regionOfNat(pro.nat) !== s.region ? 1 : 0);
-  if (importsAfter > 2) return { ok: false, why: '首发里外援最多两人' };
+  if (importsAfter > importLimit(s)) return { ok: false, why: `首发里外援最多${importLimit(s) === 2 ? '两' : importLimit(s)}人` };
   if (s.team.members[pos]) s.bench.push(s.team.members[pos]!);
   s.team.members[pos] = playerId;
   s.bench = s.bench.filter((id) => id !== playerId);

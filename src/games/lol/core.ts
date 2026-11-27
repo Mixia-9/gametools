@@ -2,7 +2,7 @@
  * 「重生之我是英雄联盟职业选手」——基础部分：类型、赛程日历、随机数、各种查询。
  * 状态是纯 JSON，可以直接存进 localStorage，也方便用脚本跑测试。
  */
-import { POSITIONS, POS_ORDER, REGIONS, TRAITS, buildSeason, type Attr, type Position, type ProPlayer, type Region, type SeasonData } from './data';
+import { POSITIONS, POS_ORDER, QUALITY, REGIONS, TRAITS, buildSeason, type Attr, type Position, type ProPlayer, type Region, type SeasonData, type Trait } from './data';
 import { RAW_SEASONS } from './seasons';
 
 export type Screen = 'create' | 'main' | 'careerEnd';
@@ -203,6 +203,17 @@ export interface GameState {
   history: SeasonSummary[];
   log: LogEntry[];
   stats: Stats;
+  /** 一共加了多少点属性。每加满 PICK_EVERY 点，多一次选词条的机会 */
+  pointsAdded: number;
+  /** 还没用的选词条次数 */
+  traitPicks: number;
+  /** 这一次选词条给出的选项（词条 ID）；还没摇过就是 null */
+  traitOffer: string[] | null;
+  /** 连续多少次选词条没出史诗以上（保底用） */
+  pickStreak: number;
+  /** 训练点、资金收益的小数部分记在这里，下次接着算，+5% 这种小加成不会被取整吃掉 */
+  tpCarry: number;
+  fundsCarry: number;
 }
 
 const PHASES: Record<PhaseId, { name: string; start: [number, number]; end: [number, number] }> = {
@@ -341,13 +352,143 @@ export const canRestInjury = (s: GameState) => idle(s) && s.injury > 0 && stepOf
 export const isWindow = (s: GameState) => canTrain(s) && !!stepOf(s)!.window;
 
 export const has = (s: GameState, trait: string) => s.traits.includes(trait);
-export const traitInfo = (id: string) => TRAITS.find((t) => t.id === id);
+
+const TRAIT_BY_ID = new Map(TRAITS.map((t) => [t.id, t] as const));
+export const traitInfo = (id: string): Trait | undefined => TRAIT_BY_ID.get(id);
+
+/** 一堆词条汇总之后的效果。乘法项 1 = 不变，加法项 0 = 不变 */
+export interface Fx {
+  // 乘法
+  tp: number;
+  matchTp: number;
+  cost: number;
+  rank: number;
+  rankLoss: number;
+  recover: number;
+  injury: number;
+  funds: number;
+  coord: number;
+  // 加法
+  tpNow: number;
+  fundsNow: number;
+  seasonTp: number;
+  restTp: number;
+  rankStamina: number;
+  trainStamina: number;
+  stamina: number;
+  heal: number;
+  luck: number;
+  interest: number;
+  imports: number;
+  lead: number;
+  league: number;
+  elim: number;
+  worlds: number;
+  decider: number;
+  firstGame: number;
+  bo1: number;
+  late: number;
+  ahead: number;
+  behind: number;
+  underdog: number;
+  blue: number;
+  red: number;
+  grit: boolean;
+}
+
+const ZERO_FX: Fx = {
+  tp: 1, matchTp: 1, cost: 1, rank: 1, rankLoss: 1, recover: 1, injury: 1, funds: 1, coord: 1,
+  tpNow: 0, fundsNow: 0, seasonTp: 0, restTp: 0, rankStamina: 0, trainStamina: 0, stamina: 0, heal: 0,
+  luck: 0, interest: 0, imports: 0, lead: 0,
+  league: 0, elim: 0, worlds: 0, decider: 0, firstGame: 0, bo1: 0, late: 0, ahead: 0, behind: 0, underdog: 0, blue: 0, red: 0,
+  grit: false,
+};
+/** 乘法类的效果项：同类的几个词条相乘；其余都是相加 */
+const MULTI_FX: readonly string[] = ['tp', 'matchTp', 'cost', 'rank', 'rankLoss', 'recover', 'injury', 'funds', 'coord'];
+
+type FxBag = Record<string, number | boolean>;
+
+/**
+ * 汇总身上的词条：all = 全部；pick = 只算加点时选来的（它们给的胜率有上限，见 match.ts）；base = 开局和自动获得的
+ */
+export function traitFx(s: GameState): { base: Fx; pick: Fx; all: Fx } {
+  const base: FxBag = { ...ZERO_FX };
+  const pick: FxBag = { ...ZERO_FX };
+  for (const id of s.traits) {
+    const t = TRAIT_BY_ID.get(id);
+    if (!t?.fx) continue;
+    const into = t.pick ? pick : base;
+    for (const [k, v] of Object.entries(t.fx)) {
+      if (k === 'grit') into.grit = true;
+      else into[k] = MULTI_FX.includes(k) ? (into[k] as number) * (1 + (v as number)) : (into[k] as number) + (v as number);
+    }
+  }
+  capPick(pick);
+  const all: FxBag = { grit: base.grit || pick.grit };
+  for (const k of Object.keys(ZERO_FX)) {
+    if (k !== 'grit') all[k] = MULTI_FX.includes(k) ? (base[k] as number) * (pick[k] as number) : (base[k] as number) + (pick[k] as number);
+  }
+  return { base: base as Fx, pick: pick as Fx, all: all as Fx };
+}
+
+/** 这些项是“越大越好”，取上限；其余（cost、rankLoss、injury）是“越小越好”，取下限 */
+const HIGHER_IS_BETTER = new Set(['tp', 'matchTp', 'rank', 'recover', 'funds', 'coord', 'stamina', 'lead']);
+
+/**
+ * 选来的词条的叠加上限：一个生涯能选十几次，不封顶的话经济类词条会把实力抬得太高。
+ * 规则是“同类加成叠起来，不超过其中最强的那一个单独的效果”，上限直接从词条表里算出来，
+ * 所以每个词条描述里写的数值都是真的。体力上限和队伍实力是相加的，单独定。
+ * 只限制选来的这一部分，开局和自动获得的词条不受影响。
+ */
+function pickCaps(): Record<string, number> {
+  const cap: Record<string, number> = { stamina: 40, lead: 0 };
+  for (const t of TRAITS) {
+    if (!t.pick || !t.fx) continue;
+    cap.lead = Math.max(cap.lead, t.fx.lead ?? 0);
+    for (const [k, v] of Object.entries(t.fx)) {
+      if (k === 'grit' || !MULTI_FX.includes(k)) continue;
+      const single = 1 + (v as number);
+      if (cap[k] === undefined) cap[k] = single;
+      else cap[k] = HIGHER_IS_BETTER.has(k) ? Math.max(cap[k], single) : Math.min(cap[k], single);
+    }
+  }
+  return cap;
+}
+export const PICK_CAP = pickCaps();
+
+function capPick(pick: FxBag): void {
+  for (const [k, limit] of Object.entries(PICK_CAP)) {
+    const v = pick[k] as number;
+    pick[k] = HIGHER_IS_BETTER.has(k) ? Math.min(v, limit) : Math.max(v, limit);
+  }
+}
+
+/** 全部词条汇总后的效果 */
+export const fx = (s: GameState): Fx => traitFx(s).all;
+
+/** 把一笔带小数的收益记到整数账上：整数部分马上加，小数部分留着下次接着算 */
+export function accrue(s: GameState, key: 'tp' | 'funds', amount: number): void {
+  const carry = key === 'tp' ? 'tpCarry' : 'fundsCarry';
+  const x = (s[carry] || 0) + amount;
+  const whole = Math.floor(x);
+  s[carry] = x - whole;
+  s[key] += whole;
+}
+
+/** 体力上限 = 100 + 词条加的。上限变高时，当前的体力也跟着涨 */
+export function refreshStamina(s: GameState): void {
+  const max = 100 + fx(s).stamina;
+  if (max > s.maxStamina) s.stamina += max - s.maxStamina;
+  s.maxStamina = max;
+  s.stamina = Math.min(s.stamina, max);
+}
 
 export function addTrait(s: GameState, id: string) {
   if (has(s, id)) return;
   s.traits.push(id);
   const info = traitInfo(id);
-  log(s, `获得词条「${info?.name ?? id}」：${info?.desc ?? ''}`, info?.bad ? 'bad' : 'title');
+  const text = info?.pick && info.quality != null ? `获得【${QUALITY[info.quality].name}】词条「${info.name}」：${info.desc}` : `获得词条「${info?.name ?? id}」：${info?.desc ?? ''}`;
+  log(s, text, info?.bad ? 'bad' : 'title');
 }
 
 export function removeTrait(s: GameState, id: string) {
@@ -376,9 +517,11 @@ export function memberOverall(s: GameState, pos: Position): number {
 
 /** 队伍实力：五名首发实力的平均；自己的位置换成自己 */
 export function teamRating(s: GameState, id: string): number {
+  // 「场上指挥」这类词条只加在自己效力的队伍上
+  const lead = id === 'own' || (s.team.kind === 'real' && s.team.id === id) ? fx(s).lead : 0;
   if (id === 'own') {
     const vals = POS_ORDER.map((p) => (p === s.pos ? overall(s) : memberOverall(s, p)));
-    return vals.reduce((a, b) => a + b, 0) / vals.length + s.team.coord;
+    return vals.reduce((a, b) => a + b, 0) / vals.length + s.team.coord + lead;
   }
   const team = cur(s).byId[id];
   if (!team) return 50;
@@ -391,7 +534,7 @@ export function teamRating(s: GameState, id: string): number {
       sum += pro ? (isOwned(s, pro.id) ? Math.max(42, pro.overall - 14) : pro.overall) : team.rating;
     }
   }
-  return sum / POS_ORDER.length;
+  return sum / POS_ORDER.length + lead;
 }
 
 export const teamName = (s: GameState, id: string) => (id === 'own' ? s.team.name : (cur(s).byId[id]?.name ?? id));

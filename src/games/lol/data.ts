@@ -45,26 +45,197 @@ export const REGIONS: { id: Region; name: string; league: string; desc: string }
 
 const REGION_OF_NAT: Record<string, string> = { CN: 'LPL', KR: 'LCK', EU: 'EU', NA: 'NA', TW: 'TW', SEA: 'SEA', BR: 'BR' };
 
-/** 词条。start = 开局可选；hidden = 达成条件后解锁 */
+/** 词条品质：数字越大越难遇到，效果也越强 */
+export type Quality = 0 | 1 | 2 | 3;
+
+export const QUALITY: { name: string }[] = [{ name: '普通' }, { name: '稀有' }, { name: '史诗' }, { name: '传说' }];
+
+/** 摇词条时各品质的权重（百分比） */
+export const QUALITY_WEIGHT = [46, 30, 18, 6];
+
+/**
+ * 词条的效果。引擎把身上所有词条的效果汇总起来再统一读取（core.ts 的 traitFx），不在各处单独判断某个词条。
+ * 胜率类都是加法，0.02 = +2%；注释写“乘”的是乘法，0.1 = +10%，−0.5 = 减半。
+ */
+export interface TraitFx {
+  // ---- 乘法，1 = 不变 ----
+  /** 所有训练点的获取 */
+  tp?: number;
+  /** 比赛拿到的训练点 */
+  matchTp?: number;
+  /** 加点的花费（负数 = 便宜，−0.15 = 便宜 15%） */
+  cost?: number;
+  /** 排位上分（只算加分） */
+  rank?: number;
+  /** 排位失败掉分 */
+  rankLoss?: number;
+  /** 休息恢复的体力 */
+  recover?: number;
+  /** 加练受伤的概率 */
+  injury?: number;
+  /** 资金收入 */
+  funds?: number;
+  /** 队伍磨合度的增长概率 */
+  coord?: number;
+  // ---- 加法 ----
+  /** 选到时立刻拿到的训练点 / 资金 */
+  tpNow?: number;
+  fundsNow?: number;
+  /** 每个赛季开始时拿到的训练点 */
+  seasonTp?: number;
+  /** 休息时也拿到的训练点 */
+  restTp?: number;
+  /** 排位 / 训练赛和加练 消耗的体力 */
+  rankStamina?: number;
+  trainStamina?: number;
+  /** 体力上限 */
+  stamina?: number;
+  /** 受伤后休战的天数减少 */
+  heal?: number;
+  /** 体力低于 30 时训练基本不打折 */
+  grit?: boolean;
+  /** 抽卡时【核心】以上的出货权重 */
+  luck?: number;
+  /** 战队对你有意向的实力门槛降低 */
+  interest?: number;
+  /** 自己战队首发的外援上限 */
+  imports?: number;
+  /** 自己所在队伍的实力 */
+  lead?: number;
+  // ---- 胜率（加法） ----
+  /** 联赛常规赛 */
+  league?: number;
+  /** 淘汰赛：季后赛、世界赛淘汰赛 */
+  elim?: number;
+  /** 世界赛：小组赛和淘汰赛 */
+  worlds?: number;
+  /** 系列赛决胜局 */
+  decider?: number;
+  /** 系列赛第一局 */
+  firstGame?: number;
+  /** 单场决胜的比赛 */
+  bo1?: number;
+  /** 系列赛第 3 局起 */
+  late?: number;
+  /** 系列赛里比分领先 / 落后时 */
+  ahead?: number;
+  behind?: number;
+  /** 对手实力比自己队伍高时 */
+  underdog?: number;
+  /** 自己在蓝色方 / 红色方时 */
+  blue?: number;
+  red?: number;
+}
+
+/**
+ * 词条。start = 开局可选；pick = 加点时可以选到（品质见 quality）；hidden = 达成条件后自动获得。
+ * 描述里的数值必须和 fx 一致，规则测试会核对。
+ */
 export interface Trait {
   id: string;
   name: string;
   desc: string;
+  fx?: TraitFx;
   start?: boolean;
+  pick?: boolean;
+  quality?: Quality;
+  /** 只对这几个位置开放 */
+  pos?: Position[];
   hidden?: boolean;
   bad?: boolean;
 }
 
+type Row = [id: string, name: string, desc: string, fx: TraitFx, pos?: Position[]];
+
+/** 某个品质的一批可选词条 */
+const pickable = (quality: Quality, rows: Row[]): Trait[] => rows.map(([id, name, desc, fx, pos]) => ({ id, name, desc, fx, quality, pick: true, pos }));
+
+const ELIM = '淘汰赛（季后赛、世界赛淘汰赛）';
+
 export const TRAITS: Trait[] = [
-  { id: 'reborn', name: '重生者', desc: '你带着未来的记忆。淘汰赛（季后赛、世界赛淘汰赛）胜率 +4%；每个赛季开始时获得 10 点训练点。', start: true },
-  { id: 'genius', name: '天赋异禀', desc: '训练点获取 +25%。', start: true },
-  { id: 'grinder', name: '排位狂人', desc: '排位上分速度 +40%，排位消耗的体力 −5。', start: true },
-  { id: 'clutch', name: '大心脏', desc: '淘汰赛的决胜局，队伍胜率 +12%。', start: true },
-  { id: 'iron', name: '铁人', desc: '体力上限 +40，加练几乎不会受伤。', start: true },
-  { id: 'rankedking', name: '最强王者', desc: '首次登顶最强王者。之后排位失败掉分减半。', hidden: true },
-  { id: 'champion', name: '联赛冠军', desc: '首次夺得联赛冠军。之后比赛获得的训练点 +50%。', hidden: true },
-  { id: 'worldchamp', name: '世界冠军', desc: '首次夺得全球总决赛冠军。之后淘汰赛胜率 +3%。', hidden: true },
-  { id: 'injury', name: '伤病隐患', desc: '加练受伤留下的隐患：训练点获取 −15%。休赛期结束后移除。', hidden: true, bad: true },
+  // ---- 开局词条：只能在开局选 ----
+  { id: 'reborn', name: '重生者', desc: `你带着未来的记忆。${ELIM}胜率 +4%；每个赛季开始时获得 10 点训练点。`, fx: { elim: 0.04, seasonTp: 10 }, start: true },
+  { id: 'genius', name: '天赋异禀', desc: '训练点获取 +25%。', fx: { tp: 0.25, matchTp: 0.25 }, start: true },
+  { id: 'grinder', name: '排位狂人', desc: '排位上分速度 +40%，排位消耗的体力 −5。', fx: { rank: 0.4, rankStamina: -5 }, start: true },
+  { id: 'clutch', name: '大心脏', desc: '淘汰赛的决胜局，队伍胜率 +12%。', fx: { decider: 0.12 }, start: true },
+  { id: 'iron', name: '铁人', desc: '体力上限 +40，加练受伤的概率 −90%。', fx: { stamina: 40, injury: -0.9 }, start: true },
+
+  // ---- 加点时选到的词条，按品质分四档 ----
+  ...pickable(0, [
+    ['warmup', '热身习惯', '休息恢复的体力 +15%。', { recover: 0.15 }],
+    ['notebook', '复盘笔记', '训练点获取 +5%。', { tp: 0.05, matchTp: 0.05 }],
+    ['duoqueue', '固定排位搭子', '排位上分速度 +10%。', { rank: 0.1 }],
+    ['thrifty', '省吃俭用', '资金收入 +10%。', { funds: 0.1 }],
+    ['homework', '带着问题休息', '休息时也获得 2 点训练点。', { restTp: 2 }],
+    ['lightpack', '轻装上阵', '体力上限 +6。', { stamina: 6 }],
+    ['easygoing', '好相处', '队伍磨合度的增长 +20%。', { coord: 0.2 }],
+    ['bluemain', '蓝方熟练', '自己在蓝色方时，胜率 +2%。', { blue: 0.02 }],
+    ['redmain', '红方也不怵', '自己在红色方时，胜率 +2%。', { red: 0.02 }],
+    ['opener', '开门红', '系列赛第一局，胜率 +2%。', { firstGame: 0.02 }],
+    ['bo1player', 'BO1 选手', '单场决胜的比赛，胜率 +3%。', { bo1: 0.03 }],
+    ['regular', '常规赛很稳', '联赛常规赛的胜率 +2%。', { league: 0.02 }],
+    ['stretching', '拉伸狂魔', '加练受伤的概率 −25%。', { injury: -0.25 }],
+    ['earlybird', '作息规律', '训练赛、加练消耗的体力 −2。', { trainStamina: -2 }],
+    ['streamer', '直播整活', '排位上分速度 +5%，资金收入 +5%。', { rank: 0.05, funds: 0.05 }],
+    ['bargain', '会挑外设', '加点的花费便宜 8%。', { cost: -0.08 }],
+    ['vod', '爱看录像', '世界赛的胜率 +2%。', { worlds: 0.02 }],
+    ['composed', '大场面不紧张', `${ELIM}的胜率 +1%。`, { elim: 0.01 }],
+  ]),
+  ...pickable(1, [
+    ['conditioning', '体能特训', '体力上限 +15。', { stamina: 15 }],
+    ['coach', '请了私教', '训练点获取 +10%。', { tp: 0.1, matchTp: 0.1 }],
+    ['duoace', '双排上分', '排位上分速度 +20%。', { rank: 0.2 }],
+    ['sponsor', '赞助商', '资金收入 +20%。', { funds: 0.2 }],
+    ['physio', '私人理疗师', '休息恢复的体力 +30%，加练受伤的概率 −30%。', { recover: 0.3, injury: -0.3 }],
+    ['giantkiller', '以下克上', '对手实力比自己队伍高时，胜率 +4%。', { underdog: 0.04 }],
+    ['comeback', '知耻后勇', '系列赛里比分落后时，胜率 +4%。', { behind: 0.04 }],
+    ['momentum', '乘胜追击', '系列赛里比分领先时，胜率 +3%。', { ahead: 0.03 }],
+    ['veteran', '老将的经验', '系列赛第 3 局起，胜率 +3%。', { late: 0.03 }],
+    ['iglcalls', '场上指挥', '自己所在队伍的实力 +1。', { lead: 1 }],
+    ['connections', '人脉广', '战队对你有意向的实力门槛 −4。', { interest: 4 }],
+    ['biggame', '关键先生', `${ELIM}的胜率 +3%。`, { elim: 0.03 }],
+    ['quickstudy', '举一反三', '加点的花费便宜 12%。', { cost: -0.12 }],
+    ['fastheal', '恢复得快', '受伤后休战的天数 −3。', { heal: 3 }],
+    ['splitpush', '单带一路', '联赛常规赛的胜率 +3%。', { league: 0.03 }, ['top']],
+    ['tempo', '节奏大师', `队伍磨合度的增长 +50%，${ELIM}的胜率 +2%。`, { coord: 0.5, elim: 0.02 }, ['jungle']],
+    ['roamer', '支援型中单', '系列赛第一局，胜率 +4%。', { firstGame: 0.04 }, ['mid']],
+    ['hypercarry', '后期大核', '系列赛第 3 局起，胜率 +5%。', { late: 0.05 }, ['adc']],
+    ['vision', '视野大师', '对手实力比自己队伍高时，胜率 +5%。', { underdog: 0.05 }, ['support']],
+  ]),
+  ...pickable(2, [
+    ['system', '科学的训练法', '训练点获取 +15%。', { tp: 0.15, matchTp: 0.15 }],
+    ['ironwill', '铁血意志', '体力上限 +25；体力低于 30 时，训练收益基本不受影响。', { stamina: 25, grit: true }],
+    ['bigstage', '大赛型选手', `${ELIM}的胜率 +4%，决胜局的胜率 +4%。`, { elim: 0.04, decider: 0.04 }],
+    ['bornforworlds', '为世界赛而生', '世界赛的胜率 +5%。', { worlds: 0.05 }],
+    ['patchmaster', '版本大师', '联赛常规赛的胜率 +4%，系列赛第 3 局起的胜率 +3%。', { league: 0.04, late: 0.03 }],
+    ['patron', '金主爸爸', '资金收入 +40%。', { funds: 0.4 }],
+    ['luckycharm', '欧皇附体', '抽卡时【核心】以上选手的出货权重 +40%。', { luck: 0.4 }],
+    ['efficient', '高效学习', '加点的花费便宜 20%。', { cost: -0.2 }],
+    ['perpetual', '永动机', '体力上限 +20，休息恢复的体力 +40%。', { stamina: 20, recover: 0.4 }],
+    ['icecold', '冷静得可怕', '对手实力比自己队伍高时，胜率 +5%；系列赛里比分落后时，胜率 +5%。', { underdog: 0.05, behind: 0.05 }],
+    ['meltingpot', '国际纵队', '自己战队首发的外援上限 +1。', { imports: 1 }],
+    ['rankdemon', '排位之神', '排位上分速度 +35%，排位失败掉分 −20%。', { rank: 0.35, rankLoss: 0.2 }],
+    ['epiphany', '顿悟', '选到时立刻获得 30 点训练点。', { tpNow: 30 }],
+    ['teambrain', '团队大脑', '自己所在队伍的实力 +2。', { lead: 2 }],
+  ]),
+  ...pickable(3, [
+    ['chosen', '天选之子', '训练点获取 +25%。', { tp: 0.25, matchTp: 0.25 }],
+    ['immortal', '不坏之身', '加练受伤的概率 −80%，体力上限 +30。', { injury: -0.8, stamina: 30 }],
+    ['closer', '决赛终结者', `${ELIM}的胜率 +5%，决胜局的胜率 +8%。`, { elim: 0.05, decider: 0.08 }],
+    ['worldclass', '世界级选手', '世界赛的胜率 +8%；对手实力比自己队伍高时，胜率 +4%。', { worlds: 0.08, underdog: 0.04 }],
+    ['goldhand', '点石成金', '加点的花费便宜 30%。', { cost: -0.3 }],
+    ['windfall', '天降横财', '选到时立刻获得 200 资金，资金收入 +60%。', { fundsNow: 200, funds: 0.6 }],
+    ['memories', '记忆碎片', '选到时和每个赛季开始时，各获得 20 点训练点。', { tpNow: 20, seasonTp: 20 }],
+    ['unshakable', '不动如山', '系列赛里比分落后时，胜率 +8%；决胜局的胜率 +6%。', { behind: 0.08, decider: 0.06 }],
+    ['allround', '全能战士', '自己所在队伍的实力 +3，队伍磨合度的增长 +100%。', { lead: 3, coord: 1 }],
+    ['destined', '命运之子', '抽卡时【核心】以上选手的出货权重 +100%。', { luck: 1 }],
+  ]),
+
+  // ---- 达成条件后自动获得 ----
+  { id: 'rankedking', name: '最强王者', desc: '首次登顶最强王者。之后排位失败掉分 −50%。', fx: { rankLoss: 0.5 }, hidden: true },
+  { id: 'champion', name: '联赛冠军', desc: '首次夺得联赛冠军。之后比赛获得的训练点 +50%。', fx: { matchTp: 0.5 }, hidden: true },
+  { id: 'worldchamp', name: '世界冠军', desc: '首次夺得全球总决赛冠军。之后淘汰赛胜率 +3%。', fx: { elim: 0.03 }, hidden: true },
+  { id: 'injury', name: '伤病隐患', desc: '加练受伤留下的隐患：训练点获取 −15%。休赛期结束后移除。', fx: { tp: -0.15, matchTp: -0.15 }, hidden: true, bad: true },
 ];
 
 /**
