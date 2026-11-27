@@ -2,7 +2,7 @@
  * 「重生之我是英雄联盟职业选手」——基础部分：类型、赛程日历、随机数、各种查询。
  * 状态是纯 JSON，可以直接存进 localStorage，也方便用脚本跑测试。
  */
-import { POSITIONS, POS_ORDER, QUALITY, REGIONS, TRAITS, buildSeason, type Attr, type Position, type ProPlayer, type Region, type SeasonData, type Trait } from './data';
+import { POSITIONS, POS_ORDER, QUALITY, REGIONS, TRAITS, buildAll, type Attr, type Position, type ProPlayer, type ProTeam, type Region, type SeasonData, type Trait } from './data';
 import { RAW_SEASONS } from './seasons';
 
 export type Screen = 'create' | 'main' | 'careerEnd';
@@ -230,7 +230,7 @@ const PHASES: Record<PhaseId, { name: string; start: [number, number]; end: [num
 const SPLIT_NAME: Record<SplitId, string> = { spring: '春季赛', summer: '夏季赛' };
 const MDAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
-let SEASONS: SeasonData[] = RAW_SEASONS.map(buildSeason);
+let SEASONS: SeasonData[] = buildAll(RAW_SEASONS);
 
 /** 测试或以后扩充赛季时替换数据 */
 export function setSeasons(list: SeasonData[]) {
@@ -306,6 +306,44 @@ export function buildPlan(year: number): Step[] {
 export const cur = (s: GameState): SeasonData => SEASONS[s.season];
 export const seasonAt = (i: number): SeasonData => SEASONS[i];
 export const seasonCount = () => SEASONS.length;
+/** 上一个赛季的数据；第一个赛季没有 */
+export const seasonBefore = (s: GameState): SeasonData | null => (s.season > 0 ? SEASONS[s.season - 1] : null);
+
+export interface RosterMove {
+  team: string;
+  joined: ProPlayer[];
+  /** 不在这支队里了的人；to = 今年去了本联赛的哪支队（离开联赛就是 null） */
+  left: { p: ProPlayer; to: string | null }[];
+}
+
+/** 本赛区今年的联赛队伍，相比上赛季名单有哪些变化。第一个赛季没有对比对象，ok 为 false */
+export function rosterNews(s: GameState): { ok: boolean; joined: string[]; left: string[]; moves: RosterMove[] } {
+  const prev = seasonBefore(s);
+  if (!prev) return { ok: false, joined: [], left: [], moves: [] };
+  const now = cur(s);
+  const before = prev.leagues[s.region];
+  const today = now.leagues[s.region];
+  const teamNameOf = (season: SeasonData, id: string) => season.byId[id]?.zh || season.byId[id]?.name || id;
+  const moves: RosterMove[] = [];
+  for (const id of today) {
+    const team = now.byId[id];
+    const old = prev.byId[id];
+    if (!team || !old) continue;
+    const was = new Set(Object.values(old.roster).filter((p): p is ProPlayer => !!p).map((p) => p.uid));
+    const still = new Set(Object.values(team.roster).filter((p): p is ProPlayer => !!p).map((p) => p.uid));
+    moves.push({
+      team: id,
+      joined: Object.values(team.roster).filter((p): p is ProPlayer => !!p && !was.has(p.uid)),
+      left: Object.values(old.roster)
+        .filter((p): p is ProPlayer => !!p && !still.has(p.uid))
+        .map((p) => {
+          const nowAt = now.byUid[p.uid];
+          return { p, to: nowAt && nowAt.team !== id ? teamNameOf(now, nowAt.team) : null };
+        }),
+    });
+  }
+  return { ok: true, joined: today.filter((id) => !before.includes(id)), left: before.filter((id) => !today.includes(id)), moves };
+}
 
 /** 每个赛季都有联赛名单的赛区才允许选择；资料没核实完的赛区会被排除 */
 export function availableRegions(): Region[] {
@@ -546,13 +584,18 @@ export function teamLabel(s: GameState, id: string): string {
   return t ? (t.zh ? `${t.name}（${t.zh}）` : t.name) : id;
 }
 
+/** 一支真实队伍名单上的平均实力：五名首发，缺人的位置用队伍实力基准 */
+export function rosterStrength(team: ProTeam): number {
+  return POS_ORDER.reduce((sum, p) => sum + (team.roster[p]?.overall ?? team.rating), 0) / POS_ORDER.length;
+}
+
 /** 本赛区今年参加联赛的 8 支队伍。自己的战队顶替其中实力最弱的一支 */
 export function leagueIds(s: GameState): string[] {
   const ids = [...cur(s).leagues[s.region]];
   if (s.team.kind === 'own') {
     let worst = 0;
     ids.forEach((id, i) => {
-      if (cur(s).byId[id] && cur(s).byId[id].rating < cur(s).byId[ids[worst]].rating) worst = i;
+      if (rosterStrength(cur(s).byId[id]) < rosterStrength(cur(s).byId[ids[worst]])) worst = i;
     });
     ids[worst] = 'own';
   }

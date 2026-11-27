@@ -5,7 +5,7 @@
  *   队伍ID|队名|赛区|实力基准|上单,打野,中单,ADC,辅助|中文常用名
  * 选手写法：ID，可带后缀
  *   !      非卖品（抽不到，也不能通过加入战队挤掉）
- *   ^+6    实力相对队伍基准的微调
+ *   ^+6    实力相对队伍基准的微调；^=92 是直接写这名选手这一年的实力（明星选手用，逐季写）
  *   ~mech  打法标签：mech 操作 / lane 对线 / macro 运营 / sense 意识 / mental 心态，不写则按位置取默认
  *   @KR    国籍与所在赛区不同时标注（KR CN EU NA TW SEA BR）
  *
@@ -286,6 +286,8 @@ export function championsFor(year: number, pos: Position): string[] {
 
 export interface ProPlayer {
   id: string;
+  /** 不区分大小写的 ID，用来跨赛季认同一个人 */
+  uid: string;
   pos: Position;
   /** 国籍，用赛区代码表示：LPL（中国）/ LCK（韩国）/ EU / NA / TW / SEA / BR */
   nat: string;
@@ -312,6 +314,8 @@ export interface SeasonData {
   byId: Record<string, ProTeam>;
   /** 按赛季内唯一 ID 查选手 */
   players: Record<string, ProPlayer>;
+  /** 按不区分大小写的 ID 查选手，跨赛季认人用 */
+  byUid: Record<string, ProPlayer>;
   /** 四个可选赛区各自的联赛队伍（每队 8 支） */
   leagues: Record<Region, string[]>;
   /** 世界赛：各赛区名额，以及当年的真实分组（队伍 ID） */
@@ -383,8 +387,17 @@ export function attrsFor(overall: number, pos: Position, tag: Tag, seed: string)
   return out;
 }
 
+/**
+ * 没有单独写实力（^=NN）的选手，每个赛季按“名字 + 年份”固定地起伏 1–2 分。
+ * 这样队伍实力基准没变的选手，新一季的实力也不会和上一季一模一样。
+ */
+export function formOf(seed: string, year: number): number {
+  const r = hash(`${seed.toLowerCase()}|${year}`) % 100;
+  return r < 12 ? -2 : r < 50 ? -1 : r < 88 ? 1 : 2;
+}
+
 /** 解析一行队伍 */
-function parseTeam(line: string, seen: Map<string, string>): ProTeam {
+function parseTeam(line: string, seen: Map<string, string>, year: number): ProTeam {
   const [id, name, region, ratingStr, players = '', zh = ''] = line.split('|');
   const rating = Number(ratingStr);
   const roster: Partial<Record<Position, ProPlayer>> = {};
@@ -399,14 +412,17 @@ function parseTeam(line: string, seen: Map<string, string>): ProTeam {
     // 国籍统一存成赛区代码（CN→LPL、KR→LCK……），没标注时默认与所在赛区相同
     const natCode = rawId.includes('@') ? rawId.split('@')[1] : region;
     const nat = REGION_OF_NAT[natCode] ?? natCode;
+    // ^=92 是直接写死的实力；否则 = 队伍实力基准 + 微调 + 这一季的状态起伏
+    const fixed = mods.match(/=(\d+)/);
     const delta = Number((mods.match(/[+-]\d+/) ?? ['0'])[0]);
     const tagMatch = mods.match(/~(mech|lane|macro|sense|mental)/);
     const tag = (tagMatch ? (tagMatch[1] as Tag) : DEFAULT_TAG[pos]);
-    const overall = Math.round(clamp(rating + delta, 30, 99));
     // 同一赛季里 ID 重复时加上队伍后缀，保证能唯一引用
     const key = seen.has(playerName) ? `${playerName}@${id}` : playerName;
     seen.set(playerName, id);
-    roster[pos] = { id: key, pos, nat, overall, attrs: attrsFor(overall, pos, tag, key), locked, team: id, tag };
+    const overall = Math.round(clamp(fixed ? Number(fixed[1]) : rating + delta + formOf(key, year), 30, 99));
+    const uid = key.toLowerCase();
+    roster[pos] = { id: key, uid, pos, nat, overall, attrs: attrsFor(overall, pos, tag, key), locked, team: id, tag };
   });
   return { id, name, zh, region, rating, roster };
 }
@@ -417,14 +433,36 @@ export function buildSeason(raw: RawSeason): SeasonData {
   for (const [region, lines] of Object.entries(raw.leagues) as [Region, string[]][]) {
     leagues[region] = lines.map((line) => line.split('|')[0]);
   }
-  const teams = [...Object.values(raw.leagues).flat(), ...(raw.extra ?? [])].map((line) => parseTeam(line, seen));
+  const teams = [...Object.values(raw.leagues).flat(), ...(raw.extra ?? [])].map((line) => parseTeam(line, seen, raw.year));
   const byId: Record<string, ProTeam> = {};
   const players: Record<string, ProPlayer> = {};
+  const byUid: Record<string, ProPlayer> = {};
   for (const team of teams) {
     byId[team.id] = team;
-    for (const p of Object.values(team.roster)) if (p) players[p.id] = p;
+    for (const p of Object.values(team.roster)) {
+      if (!p) continue;
+      players[p.id] = p;
+      byUid[p.uid] = p;
+    }
   }
-  return { id: raw.id, year: raw.year, teams, byId, players, leagues, worlds: raw.worlds, tiers: raw.tiers };
+  return { id: raw.id, year: raw.year, teams, byId, players, byUid, leagues, worlds: raw.worlds, tiers: raw.tiers };
+}
+
+/**
+ * 把所有赛季建好，再保证“同一个选手在相邻两个赛季的实力一定不一样”：
+ * 名单里逐季写死了实力的本来就不一样；其余的万一撞上了，就按名字固定地挪开 1 分。
+ */
+export function buildAll(raws: RawSeason[]): SeasonData[] {
+  const seasons = raws.map(buildSeason);
+  for (let i = 1; i < seasons.length; i++) {
+    for (const p of Object.values(seasons[i].players)) {
+      const before = seasons[i - 1].byUid[p.uid];
+      if (!before || before.overall !== p.overall) continue;
+      p.overall = clamp(p.overall + (hash(`${p.uid}|${p.team}`) % 2 ? 1 : -1), 30, 99);
+      p.attrs = attrsFor(p.overall, p.pos, p.tag, p.id);
+    }
+  }
+  return seasons;
 }
 
 /** 选手的国籍属于哪个赛区（用于“外援最多两人”） */

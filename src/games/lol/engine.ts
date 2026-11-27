@@ -2,13 +2,13 @@
  * 主流程：创建生涯、每天的行动、比赛日的推进、赛季结束与存档。
  * 界面只需要调用这里导出的函数。
  */
-import { POS_ORDER, QUALITY_WEIGHT, TRAITS, type Attr, type Position, type Region, type Trait } from './data';
+import { POS_ORDER, QUALITY_WEIGHT, REGIONS, TRAITS, type Attr, type Position, type Region, type Trait } from './data';
 import { carryTeam, DRAW_COST, importLimit, interest, joinTeam, makeOwnTeam } from './squad';
 import { afterFinal, afterSemi, closeKO, ensureSplit, finishGroups, openKO, record, seedPlayoffs, splitOutcome, startWorlds, worldsOutcome } from './competition';
 import { PICK_WIN_CAP, playSeries, preMatch, traitWin } from './match';
 import {
-  accrue, addTrait, buildPlan, canRestInjury, canTrain, clamp, cur, fx, has, leagueIds, log, overall, pointCost, refreshStamina, removeTrait, ri, rnd, seasonAt, seasonCount,
-  splitName, stepOf, teamLabel, teamName, tierOf, traitInfo,
+  accrue, addTrait, buildPlan, canRestInjury, canTrain, clamp, cur, fx, has, leagueIds, log, overall, pointCost, refreshStamina, removeTrait, ri, rnd, rosterNews, seasonAt, seasonBefore,
+  seasonCount, splitName, stepOf, teamLabel, teamName, tierOf, traitInfo,
   type Action, type GameState, type Pending, type SeasonSummary, type SeriesResult, type SplitId,
 } from './core';
 
@@ -88,7 +88,23 @@ function seasonStart(s: GameState): void {
   const gift = fx(s).seasonTp;
   if (gift > 0) s.tp += gift;
   s.modal = { kind: 'seasonStart' };
-  log(s, `${cur(s).id} 赛季（${cur(s).year} 年）开始，你 ${s.age} 岁。`, 'title');
+  const lines: string[] = [`${cur(s).id} 赛季（${cur(s).year} 年）开始，你 ${s.age} 岁。`];
+  // 新赛季名单有什么变化，直接写进生涯记录，玩家不用自己去比对
+  const news = rosterNews(s);
+  if (news.ok) {
+    const nameOf = (id: string) => cur(s).byId[id]?.zh || cur(s).byId[id]?.name || seasonBefore(s)?.byId[id]?.zh || seasonBefore(s)?.byId[id]?.name || id;
+    const region = REGIONS.find((r) => r.id === s.region)!.name;
+    if (news.joined.length || news.left.length) {
+      lines.push(`新赛季 ${region}：${news.joined.length ? `加入 ${news.joined.map(nameOf).join('、')}` : '没有新队伍'}；${news.left.length ? `离开 ${news.left.map(nameOf).join('、')}` : '没有队伍离开'}。`);
+    }
+    for (const m of news.moves) {
+      if (m.joined.length + m.left.length < 3) continue;
+      const part = [m.joined.length ? `${m.joined.map((p) => p.id).join('、')}加入` : '', m.left.length ? `${m.left.map((l) => l.p.id + (l.to ? `（去了 ${l.to}）` : '')).join('、')}离队` : ''].filter(Boolean);
+      lines.push(`${nameOf(m.team)}换人：${part.join('；')}。`);
+    }
+  }
+  // 生涯记录是新的在上面，所以倒着写，读起来才是“赛季开始 → 名单变化”
+  for (const text of lines.reverse()) log(s, text, 'title');
 }
 
 export function closeSeasonStart(s: GameState): void {

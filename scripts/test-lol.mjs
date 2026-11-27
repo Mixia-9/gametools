@@ -1,4 +1,4 @@
-// 「重生之我是英雄联盟职业选手」规则测试：数据完整性、非卖品、外援上限、英雄与赛季、赛前 BP、词条、世界赛名单与赛制。
+// 「重生之我是英雄联盟职业选手」规则测试：数据完整性、非卖品、外援上限、英雄与赛季、赛前 BP、词条、战队与选手、世界赛名单与赛制。
 // 用法：node scripts/test-lol.mjs
 import { createServer } from 'vite';
 import { fileURLToPath } from 'node:url';
@@ -7,6 +7,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const vite = await createServer({ root, configFile: false, server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' });
 const E = await vite.ssrLoadModule('/src/games/lol/engine.ts');
 const D = await vite.ssrLoadModule('/src/games/lol/data.ts');
+const R = await vite.ssrLoadModule('/src/games/lol/seasons.ts');
 
 let failed = 0;
 const check = (name, cond, detail = '') => {
@@ -693,6 +694,74 @@ console.log('\n[词条]');
     s.tp = 1000;
     for (let i = 0; i < E.PICK_EVERY; i++) E.addPoint(s, 'reaction');
     check('旧存档补上默认值后照常积累加点、照常可选词条', s.pointsAdded === E.PICK_EVERY && s.traitPicks === 1 && s.pickStreak === 0 && s.tpCarry === 0 && s.fundsCarry === 0 && E.traitOptions(s).length === 3);
+  }
+}
+
+console.log('\n[战队与选手]');
+{
+  const S = [0, 1, 2].map((i) => E.seasonAt(i));
+  // 1) 同一个选手在相邻赛季的实力一定不同，而且变化不离谱
+  {
+    let people = 0;
+    const same = [];
+    const big = [];
+    for (let i = 1; i < S.length; i++) {
+      for (const p of Object.values(S[i].players)) {
+        const before = S[i - 1].byUid[p.uid];
+        if (!before) continue;
+        people++;
+        const d = p.overall - before.overall;
+        if (d === 0) same.push(`${p.id} ${S[i].id}`);
+        if (Math.abs(d) > 9) big.push(`${p.id} ${before.overall}→${p.overall}`);
+      }
+    }
+    console.log(`       出现在相邻两个赛季的选手：${people} 人次`);
+    check('同一个选手在相邻两个赛季的实力一定不一样', people > 60 && same.length === 0, same.slice(0, 4).join('，'));
+    check('单季变化不超过 9 分（不能出现 99 → 79 这种断崖）', big.length === 0, big.slice(0, 4).join('，'));
+  }
+  // 2) 明星选手的逐季实力是按人写在名单里的，不再跟着队伍成绩大跳
+  const line = (uid) => JSON.stringify(S.map((sn) => sn.byUid[uid]?.overall ?? null));
+  check('Uzi 90 → 92 → 93，Clearlove 90 → 93，Faker 99 → 98，PawN 94 → 95，Deft 93 → 94', line('uzi') === '[90,92,93]' && line('clearlove') === '[null,90,93]' && line('faker') === '[99,null,98]' && line('pawn') === '[null,94,95]' && line('deft') === '[null,93,94]', `${line('uzi')} ${line('clearlove')} ${line('faker')} ${line('pawn')} ${line('deft')}`);
+  check('OMG 的老将 2015 年下滑，但不是断崖：Gogoing 85 → 87 → 80，Cool 84 → 88 → 84', line('gogoing') === '[85,87,80]' && line('cool') === '[84,88,84]', `${line('gogoing')} ${line('cool')}`);
+  check('同一个选手的不同写法（Lovelin/Loveling、Dandy/DanDy、bengi/Bengi）算同一个人', [0, 1, 2].every((i) => !Object.values(S[i].players).some((p) => ['Lovelin', 'Dandy', 'bengi'].includes(p.id))) && [0, 1, 2].every((i) => !!S[i].byUid.loveling && !!S[i].byUid.dandy) && !!S[0].byUid.bengi && !!S[2].byUid.bengi);
+  check('同一份名单每次建出来的实力都一样（状态起伏是固定的，不是每次随机）', (() => {
+    const shape = (list) => JSON.stringify(list.map((sn) => Object.values(sn.players).map((p) => `${p.uid}${p.overall}`).sort()));
+    return shape(D.buildAll(R.RAW_SEASONS)) === shape(S);
+  })());
+
+  // 3) 名单逐季在变：有队伍进出，留下来的队伍首发也在换
+  {
+    const lpl = S.map((sn) => sn.leagues.LPL);
+    check('LPL 的队伍逐季在变：2014 年新加入 EDG、LGD、WE 青训，2015 年新加入 QG、Snake、VG、M3', lpl[1].filter((id) => !lpl[0].includes(id)).sort().join() === 'edg,lgd,wea' && lpl[2].filter((id) => !lpl[1].includes(id)).sort().join() === 'm3,qg,snake,vg');
+    const common = (i, j, id) => Object.values(S[i].byId[id].roster).filter(Boolean).filter((p) => Object.values(S[j].byId[id].roster).some((q) => q && q.uid === p.uid)).length;
+    check('留下来的队伍首发也在变：皇族 2013 → 2014 五个人里只留下 Uzi，WE 换了三个，OMG 换了辅助', common(0, 1, 'royal') === 1 && common(0, 1, 'we') === 2 && common(0, 1, 'omg') === 4);
+  }
+
+  // 4) 引擎能汇总出本赛季的名单变化
+  {
+    const news = E.rosterNews(game('mid', 1));
+    check('2014 赛季：加入 EDG、LGD、WE 青训；离开 PE、LMQ、EP.HK', news.ok && news.joined.sort().join() === 'edg,lgd,wea' && news.left.sort().join() === 'ephk,lmq,pe');
+    const royal = news.moves.find((m) => m.team === 'royal');
+    check('皇族：Cola、inSec、corn、Zero 加入，Godlike、Lucky、Wh1t3zZ、Tabe 离队', !!royal && royal.joined.map((p) => p.id).sort().join() === 'Cola,Zero,corn,inSec' && royal.left.map((l) => l.p.id).sort().join() === 'Godlike,Lucky,Tabe,Wh1t3zZ');
+    const fzzf = news.moves.find((m) => m.team === 'we')?.left.find((l) => l.p.id === 'Fzzf');
+    check('Fzzf 从 WE 转会到了 EDG：在 WE 的离队名单里注明去了哪里', !!fzzf && fzzf.to === 'EDG', fzzf ? String(fzzf.to) : '没找到');
+    const news5 = E.rosterNews(game('mid', 2));
+    const edg = news5.moves.find((m) => m.team === 'edg');
+    check('2015 赛季：加入 QG、Snake、VG、M3，离开 皇族、WE、YG、WE 青训；EDG 来了 PawN、Deft、Meiko', news5.joined.sort().join() === 'm3,qg,snake,vg' && news5.left.sort().join() === 'royal,we,wea,yg' && !!edg && edg.joined.map((p) => p.id).sort().join() === 'Deft,Meiko,PawN');
+    check('第一个赛季没有可以对比的上赛季', E.rosterNews(game('mid', 0)).ok === false);
+  }
+
+  // 5) 新赛季开始时，变化直接写进生涯记录
+  {
+    const texts = game('mid', 1).log.map((l) => l.text);
+    const head = texts.slice(0, 4);
+    check('赛季开始的生涯记录里写了队伍的增减和换人，并且“赛季开始”在最上面', head[0]?.startsWith('S4 赛季') && texts.some((t) => t.includes('新赛季 LPL') && t.includes('EDG') && t.includes('PE')) && texts.some((t) => t.includes('皇族换人') && t.includes('inSec') && t.includes('Godlike')), head.join(' | '));
+  }
+
+  // 6) 自己的战队顶替的是五名首发实际最弱的队
+  {
+    const ids = E.leagueIds(game('mid', 2));
+    check('用自己的战队打 2015 赛季时，顶替的是最弱的 M3，而不是 Uzi 所在的 OMG', ids.includes('own') && !ids.includes('m3') && ids.includes('omg'), ids.join(','));
   }
 }
 
