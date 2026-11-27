@@ -169,6 +169,45 @@ console.log('\n[世界赛]');
   }
 }
 
+// 3) 其他赛区不模拟联赛，照当年的真实结果进世界赛：不管自己打得出不出线，它们的名单都不能变
+{
+  let checked = 0;
+  let bad = 0;
+  let careers = 0;
+  for (let seed = 1; seed <= 45; seed++) {
+    const s = E.createGame({ name: '测试', region: 'LPL', pos: ['top', 'jungle', 'mid', 'adc', 'support'][seed % 5], trait: 'genius', teamName: '测试队', seed });
+    E.closeSeasonStart(s);
+    // 一部分局把自己的队调得很强（一定能进世界赛并挤掉同赛区的真实队伍），另一部分很弱
+    if (seed % 2) for (const p of D.POS_ORDER) s.team.trainees[p] = 99;
+    if (seed % 3 === 0) for (const p of D.POS_ORDER) s.team.trainees[p] = 30;
+    let guard = 0;
+    const seen = new Set();
+    while (s.screen === 'main' && guard++ < 80000) {
+      if (s.modal) E.closeSeasonStart(s);
+      else if (s.result) E.continueAfterResult(s);
+      else if (s.pending) E.playPending(s);
+      else if (s.injury > 0) E.restInjury(s);
+      else if (E.canTrain(s)) E.act(s, E.canDo(s, 'scrim').ok ? 'scrim' : 'rest');
+      else break;
+      if (s.worlds && !seen.has(s.season)) {
+        seen.add(s.season);
+        // 'own' 是玩家自己的战队，也算 LPL
+        const others = (ids) => ids.filter((id) => id !== 'own' && E.cur(s).byId[id]?.region !== 'LPL').sort().join();
+        const spec = E.cur(s).worlds;
+        checked++;
+        const live = others([...s.worlds.groups.flat(), ...s.worlds.seeds]);
+        const real = others([...spec.groups.flat(), ...(spec.seeds ?? [])]);
+        if (live !== real) {
+          bad++;
+          if (bad <= 3) console.log(`       ${E.cur(s).id} 其他赛区的名单变了：${live} 应为 ${real}`);
+        }
+      }
+    }
+    careers++;
+  }
+  check(`打了 ${careers} 局完整生涯：其他赛区进世界赛的队伍（共 ${checked} 个赛季）全部等于当年真实名单`, bad === 0);
+}
+
 console.log(`\n${failed === 0 ? '全部通过' : `${failed} 项失败`}`);
 await vite.close();
 process.exit(failed ? 1 : 0);
